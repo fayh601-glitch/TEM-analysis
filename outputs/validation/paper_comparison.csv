@@ -1,0 +1,4 @@
+image,figure,paper_length_nm,paper_width_nm,pipeline_length_nm,pipeline_width_nm,length_error_pct,n_rods
+s2_A_starting_rods.png,S2A,27.6,2.9,28.4,4.7,3.0,31
+s2_B_30min.png,S2B,44.4,4.4,66.1,10.2,48.9,25
+s2_D_65min.png,S2D,99.3,5.9,52.9,5.0,-46.7,9

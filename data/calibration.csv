@@ -1,0 +1,4 @@
+filename,scale_bar_nm,scale_bar_pixels,nm_per_pixel,source_figure,paper_length_nm,paper_width_nm,notes
+s2_A_starting_rods.png,20,48.0,0.4167,S2A,27.6,2.9,Enright 2018 SI (c8qm00056e)
+s2_B_30min.png,20,48.0,0.4167,S2B,44.4,4.4,Enright 2018 SI (c8qm00056e)
+s2_D_65min.png,20,52.0,0.3846,S2D,99.3,5.9,Enright 2018 SI (c8qm00056e)

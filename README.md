@@ -35,7 +35,10 @@ Copy `data/calibration.example.csv` → `data/calibration.csv` and fill in `scal
 tem-rods analyze --image data/raw/s2_A_starting_rods.png --nm-per-pixel 0.42
 
 # Option B: from scale bar
-tem-rods analyze --image data/raw/s2_A_starting_rods.png --scale-bar-nm 50 --scale-bar-pixels 120
+tem-rods analyze --image data/curated/s2_A_starting_rods.png --scale-bar-nm 20 --scale-bar-pixels 48
+
+# Prepare curated SI panels + validation against Enright 2018 Figure S2
+python scripts/prepare_paper_dataset.py
 ```
 
 ### 4. Outputs

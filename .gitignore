@@ -15,9 +15,15 @@ data/raw/*
 data/labels/*
 !data/labels/.gitkeep
 !data/labels/manual_v1.example.csv
-!data/calibration.example.csv
-outputs/*
+!data/labels/manual_v1.csv
+data/curated/*
+!data/curated/.gitkeep
+!data/curated/*.png
+!data/calibration.csv
+outputs/**
 !outputs/.gitkeep
+!outputs/validation/
+!outputs/validation/paper_comparison.csv
 
 .DS_Store
 *.swp
