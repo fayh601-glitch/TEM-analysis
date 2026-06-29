@@ -13,8 +13,14 @@ from tem_rods.pipeline import analyze_image, print_summary
 app = typer.Typer(
     name="tem-rods",
     help="Analyze CdSe/CdS TEM images: measure rod/dot size and classify shape.",
+    no_args_is_help=True,
 )
 console = Console()
+
+
+@app.callback()
+def main() -> None:
+    """CdSe/CdS TEM rod and dot analysis."""
 
 
 @app.command("analyze")

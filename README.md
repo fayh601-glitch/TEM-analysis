@@ -21,6 +21,8 @@ tem-rods analyze \
 
 Results: `outputs/s2_A_starting_rods_measurements.csv` and `outputs/s2_A_starting_rods_overlay.png`.
 
+**View results on GitHub:** browse [`outputs/demo/`](outputs/demo/) — overlay PNGs and CSVs are committed so you can preview them in the browser without running locally.
+
 ## Repository layout
 
 ```
@@ -43,6 +45,7 @@ TEM-analysis/
 | Command | Description |
 |---|---|
 | `tem-rods analyze --image PATH --scale-bar-nm 20 --scale-bar-pixels N` | Analyze one TEM image |
+| `bash scripts/run_demo.sh` | Run all 3 paper images → `outputs/demo/` (commit to view on GitHub) |
 | `python scripts/extract_pdf_images.py SI.pdf -o data/raw` | Extract images from PDF |
 | `python scripts/prepare_paper_dataset.py` | Regenerate curated data + validation |
 | `pytest` | Run tests |
