@@ -1,0 +1,4 @@
+# Optional — install after core requirements
+streamlit==1.39.0
+pytesseract==0.3.13
+openpyxl==3.1.5

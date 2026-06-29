@@ -1,0 +1,3 @@
+particle_id,image,class,length_nm,width_nm,notes
+1,s2_A_starting_rods.png,rod,28.1,3.0,example row — replace with Fiji measurements
+2,s2_A_starting_rods.png,dot,4.2,4.1,example sphere/dot

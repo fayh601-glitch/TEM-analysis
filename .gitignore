@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Local data and outputs (keep structure via .gitkeep)
+data/raw/*
+!data/raw/.gitkeep
+data/labels/*
+!data/labels/.gitkeep
+!data/labels/manual_v1.example.csv
+!data/calibration.example.csv
+outputs/*
+!outputs/.gitkeep
+
+.DS_Store
+*.swp
+.env
