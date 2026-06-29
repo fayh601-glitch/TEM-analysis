@@ -1,3 +1,12 @@
+"""
+Scale Calibration — convert pixels to real-world nanometers
+============================================================
+
+TEM images include a scale bar (e.g. "20 nm"). This file does the simple math
+that turns "how many pixels wide is the bar?" into "how many nanometers is each
+pixel?" so all reported sizes are in physical units.
+"""
+
 from __future__ import annotations
 
 

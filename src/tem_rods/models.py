@@ -1,3 +1,13 @@
+"""
+Shared Data Types — settings and results used across the project
+=================================================================
+
+This file defines the "vocabulary" the rest of the code uses: what a rod, dot,
+or rejected blob looks like in data, and which knobs (area thresholds, etc.)
+control the analysis. Think of it as the project's dictionary — no image
+processing happens here.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,8 +16,11 @@ from pathlib import Path
 
 
 class ParticleClass(str, Enum):
+    """How each detected blob is categorized."""
+
     ROD = "rod"
     DOT = "dot"
+    REJECT = "reject"
 
 
 @dataclass(frozen=True)
@@ -19,6 +32,12 @@ class AnalysisConfig:
     max_particle_area_px: int | None = None
     min_eccentricity_rod: float = 0.85
     min_aspect_ratio_rod: float = 1.5
+    max_eccentricity_dot: float = 0.75
+    max_aspect_ratio_dot: float = 1.35
+    min_solidity: float = 0.48
+    min_extent: float = 0.18
+    min_local_contrast: float = 0.025
+    mask_bottom_fraction: float = 0.10
     watershed_min_distance: int = 10
     use_watershed: bool = True
     exclude_border: bool = True
@@ -55,3 +74,7 @@ class AnalysisResult:
     @property
     def dots(self) -> list[ParticleMeasurement]:
         return [p for p in self.particles if p.particle_class == ParticleClass.DOT]
+
+    @property
+    def rejected(self) -> list[ParticleMeasurement]:
+        return [p for p in self.particles if p.particle_class == ParticleClass.REJECT]

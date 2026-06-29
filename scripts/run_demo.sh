@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Run analysis on all curated paper images and write results to outputs/demo/
+# Run Demo Analysis — analyze all three paper TEM images at once
+#
+# This script runs the full pipeline on the three curated Figure S2 images from
+# Enright 2018 and saves CSV + overlay results into outputs/demo/.
+
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

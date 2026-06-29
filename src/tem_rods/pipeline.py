@@ -1,3 +1,12 @@
+"""
+Analysis Pipeline — run the full TEM image workflow end to end
+===============================================================
+
+This is the main "conductor" file: it loads an image, finds particles, measures
+them, classifies rods vs dots, and saves a CSV plus an annotated overlay PNG.
+Most other files are helpers that this one calls in order.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,14 +15,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Ellipse
-from skimage.measure import regionprops
+from skimage.measure import find_contours, regionprops
 
 from tem_rods.calibrate import validate_nm_per_pixel
 from tem_rods.io import load_grayscale
 from tem_rods.measure import measure_particles, summarize_by_class
 from tem_rods.models import AnalysisConfig, AnalysisResult, ParticleClass
 from tem_rods.preprocess import preprocess
-from tem_rods.segment import segment_particles
+from tem_rods.segment import segment_particles_from_config
 
 
 def analyze_image(
@@ -33,14 +42,7 @@ def analyze_image(
 
     image = load_grayscale(image_path)
     processed = preprocess(image, gaussian_sigma=cfg.gaussian_sigma)
-    labels = segment_particles(
-        processed,
-        min_particle_area_px=cfg.min_particle_area_px,
-        max_particle_area_px=cfg.max_particle_area_px,
-        use_watershed=cfg.use_watershed,
-        watershed_min_distance=cfg.watershed_min_distance,
-        exclude_border=cfg.exclude_border,
-    )
+    labels = segment_particles_from_config(processed, cfg)
     particles = measure_particles(labels, nm_per_pixel=nm_per_pixel, config=cfg)
 
     result = AnalysisResult(
@@ -56,7 +58,7 @@ def analyze_image(
         result.csv_path = out_dir / f"{stem}_measurements.csv"
         result.overlay_path = out_dir / f"{stem}_overlay.png"
         _write_csv(result)
-        _write_overlay(image, labels, result, cfg)
+        _write_overlay(image, labels, result)
 
     return result
 
@@ -85,7 +87,6 @@ def _write_overlay(
     image: np.ndarray,
     labels: np.ndarray,
     result: AnalysisResult,
-    config: AnalysisConfig,
 ) -> None:
     assert result.overlay_path is not None
     fig, ax = plt.subplots(figsize=(10, 10))
@@ -94,28 +95,38 @@ def _write_overlay(
     color_map = {
         ParticleClass.ROD: "#00ff88",
         ParticleClass.DOT: "#4488ff",
+        ParticleClass.REJECT: "#ff6644",
     }
 
     for region, particle in zip(regionprops(labels), result.particles):
+        if particle.particle_class == ParticleClass.REJECT:
+            continue
+
         cy, cx = region.centroid
         color = color_map[particle.particle_class]
-        ax.plot(cx, cy, "o", color=color, markersize=4)
 
-        # Oriented ellipse from region orientation and Feret diameters.
+        particle_mask = labels == region.label
+        for contour in find_contours(particle_mask.astype(float), 0.5):
+            ax.plot(contour[:, 1], contour[:, 0], color=color, linewidth=1.5)
+
         angle_deg = np.degrees(region.orientation)
         ell = Ellipse(
             (cx, cy),
-            width=particle.width_px,
-            height=particle.length_px,
+            width=region.minor_axis_length,
+            height=region.major_axis_length,
             angle=angle_deg,
             fill=False,
             edgecolor=color,
-            linewidth=1.5,
+            linewidth=1.0,
+            linestyle="--",
+            alpha=0.85,
         )
         ax.add_patch(ell)
+
+        label_offset = region.major_axis_length / 2 + 4
         ax.text(
             cx,
-            cy - particle.length_px / 2 - 4,
+            cy - label_offset,
             f"{particle.particle_class.value[0].upper()} "
             f"{particle.length_nm:.1f}×{particle.width_nm:.1f} nm",
             color=color,
@@ -126,9 +137,11 @@ def _write_overlay(
 
     rod_stats = summarize_by_class(result.particles, ParticleClass.ROD)
     dot_stats = summarize_by_class(result.particles, ParticleClass.DOT)
+    reject_count = len(result.rejected)
     title = (
         f"{result.image_path.name} | "
-        f"rods: {rod_stats['count']} | dots: {dot_stats['count']}"
+        f"rods: {rod_stats['count']} | dots: {dot_stats['count']} | "
+        f"rejected: {reject_count}"
     )
     ax.set_title(title, fontsize=11)
     ax.axis("off")
@@ -141,12 +154,14 @@ def print_summary(result: AnalysisResult) -> None:
     """Print human-readable summary for CLI."""
     rod_stats = summarize_by_class(result.particles, ParticleClass.ROD)
     dot_stats = summarize_by_class(result.particles, ParticleClass.DOT)
+    reject_count = len(result.rejected)
 
     print(f"\nImage: {result.image_path}")
     print(f"Calibration: {result.nm_per_pixel:.4f} nm/pixel")
     print(f"Total particles: {len(result.particles)}")
     print(f"  Rods: {rod_stats['count']}")
     print(f"  Dots: {dot_stats['count']}")
+    print(f"  Rejected: {reject_count}")
 
     if rod_stats["count"] > 0:
         print(
@@ -159,7 +174,7 @@ def print_summary(result: AnalysisResult) -> None:
         )
     if dot_stats["count"] > 0:
         print(
-            f"  Dot mean diameter (Feret max): {dot_stats['mean_length_nm']:.1f} ± "
+            f"  Dot mean diameter (major axis): {dot_stats['mean_length_nm']:.1f} ± "
             f"{dot_stats['std_length_nm']:.1f} nm"
         )
 

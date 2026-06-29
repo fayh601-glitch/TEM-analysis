@@ -1,3 +1,12 @@
+"""
+Particle Measurer — turn each labeled blob into length, width, and shape stats
+==============================================================================
+
+This file walks through every numbered region in a segmented image and computes
+its size in pixels and nanometers. Length and width come from the fitted ellipse
+axes so they match what you see drawn on the overlay.
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -9,11 +18,10 @@ from tem_rods.models import AnalysisConfig, ParticleClass, ParticleMeasurement
 
 def _length_width_px(region) -> tuple[float, float]:
     """Extract length (long axis) and width (short axis) in pixels from a region."""
-    length_px = float(region.feret_diameter_max)
-    if hasattr(region, "feret_diameter_min"):
-        width_px = float(region.feret_diameter_min)
-    else:
-        width_px = float(region.axis_minor_length)
+    length_px = float(region.major_axis_length)
+    width_px = float(region.minor_axis_length)
+    if width_px <= 0:
+        width_px = float(getattr(region, "feret_diameter_min", 0.0) or region.axis_minor_length)
     return length_px, width_px
 
 
@@ -70,7 +78,13 @@ def summarize_by_class(
     """Return mean length/width for rods or dots."""
     subset = [p for p in particles if p.particle_class == particle_class]
     if not subset:
-        return {"count": 0, "mean_length_nm": float("nan"), "mean_width_nm": float("nan")}
+        return {
+            "count": 0,
+            "mean_length_nm": float("nan"),
+            "mean_width_nm": float("nan"),
+            "std_length_nm": float("nan"),
+            "std_width_nm": float("nan"),
+        }
 
     return {
         "count": len(subset),

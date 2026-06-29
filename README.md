@@ -1,8 +1,13 @@
 # CdSe/CdS TEM Rod & Dot Analyzer
 
-Classical computer-vision pipeline for **transmission electron microscopy (TEM)** images of **CdSe** and **CdS** nanoparticles. Detects particles, classifies **rods vs dots**, and reports **length** and **width** in nanometers.
+Classical computer-vision pipeline for **transmission electron microscopy (TEM)**
+images of **CdSe** and **CdS** nanoparticles. Detects particles, classifies
+**rods vs dots**, rejects background noise, and reports **length** and **width**
+in nanometers.
 
 **Reference paper:** Enright et al., *Mater. Chem. Front.* **2018** — [DOI: 10.1039/c8qm00056e](https://doi.org/10.1039/c8qm00056e)
+
+> **New here?** Read [How it works](docs/HOW_IT_WORKS.md) for a plain-English walkthrough of every step.
 
 ## Quick start
 
@@ -12,32 +17,46 @@ cd TEM-analysis
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt && pip install -e .
 
-# Analyze curated Figure S2A starting rods (validated ~28 nm vs paper 27.6 nm)
+# Analyze one image
 tem-rods analyze \
   --image data/curated/s2_A_starting_rods.png \
   --scale-bar-nm 20 --scale-bar-pixels 48 \
   --min-area 150 --no-watershed
+
+# Or analyze all three paper images at once
+bash scripts/run_demo.sh
 ```
 
-Results: `outputs/s2_A_starting_rods_measurements.csv` and `outputs/s2_A_starting_rods_overlay.png`.
+Results land in `outputs/` (or `outputs/demo/` for the demo script).
 
-**View results on GitHub:** browse [`outputs/demo/`](outputs/demo/) — overlay PNGs and CSVs are committed so you can preview them in the browser without running locally.
+**View on GitHub:** browse [`outputs/demo/`](outputs/demo/) — overlay PNGs and CSVs are committed for browser preview.
 
 ## Repository layout
 
 ```
 TEM-analysis/
-├── src/tem_rods/              # Analysis package
-├── scripts/
-│   ├── extract_pdf_images.py  # Pull images from SI PDF
-│   └── prepare_paper_dataset.py # Build curated set + validation
-├── data/
-│   ├── curated/               # Figure S2 TEM panels (committed)
-│   ├── calibration.csv        # Scale bars + paper reference sizes
-│   └── labels/manual_v1.csv   # Rod labels (semi-auto)
-├── outputs/validation/        # Comparison to published stats
-├── tests/
-└── docs/DEVELOPMENT.md        # Contributor guide
+├── src/tem_rods/              ← Main Python package (see src/tem_rods/README.md)
+│   ├── cli.py                 ← Terminal command entry point
+│   ├── pipeline.py            ← Full analysis workflow
+│   ├── segment.py             ← Find particles + filter noise
+│   ├── classify.py            ← Rod / dot / reject labels
+│   ├── measure.py             ← Length & width in nm
+│   └── ...                    ← io, preprocess, calibrate, scale_bar, models
+├── scripts/                   ← Batch helpers (see scripts/README.md)
+│   ├── run_demo.sh            ← Analyze all 3 paper images
+│   ├── extract_pdf_images.py  ← Pull images from SI PDF
+│   └── prepare_paper_dataset.py
+├── data/                      ← Input images & calibration (see data/README.md)
+│   ├── curated/               ← Figure S2 TEM panels
+│   └── calibration.csv
+├── outputs/                   ← Analysis results (CSVs + overlay PNGs)
+│   ├── demo/                  ← Committed demo run
+│   └── validation/            ← Comparison to published stats
+├── tests/                     ← Automatic tests (`pytest`)
+└── docs/
+    ├── HOW_IT_WORKS.md        ← Beginner guide (start here)
+    ├── DEVELOPMENT.md         ← Contributor guide
+    └── PROJECT_STATUS.md      ← What's done / what's next
 ```
 
 ## Commands
@@ -45,7 +64,7 @@ TEM-analysis/
 | Command | Description |
 |---|---|
 | `tem-rods analyze --image PATH --scale-bar-nm 20 --scale-bar-pixels N` | Analyze one TEM image |
-| `bash scripts/run_demo.sh` | Run all 3 paper images → `outputs/demo/` (commit to view on GitHub) |
+| `bash scripts/run_demo.sh` | Run all 3 paper images → `outputs/demo/` |
 | `python scripts/extract_pdf_images.py SI.pdf -o data/raw` | Extract images from PDF |
 | `python scripts/prepare_paper_dataset.py` | Regenerate curated data + validation |
 | `pytest` | Run tests |
@@ -54,23 +73,26 @@ TEM-analysis/
 
 | Quantity | Definition |
 |---|---|
-| **Length** | Feret maximum diameter |
-| **Width** | Minor axis / Feret min |
+| **Length** | Major axis of fitted ellipse |
+| **Width** | Minor axis of fitted ellipse |
 | **Rod** | eccentricity ≥ 0.85 and aspect ratio ≥ 1.5 |
-| **Dot** | all other detected particles |
+| **Dot** | low eccentricity and roughly round |
+| **Reject** | ambiguous detection — in CSV only, not on overlay |
 
-## Validation snapshot
+## Overlay legend
 
-| Panel | Paper length | Pipeline length |
-|---|---|---|
-| S2A starting rods | 27.6 nm | **28.4 nm** |
-| S2B 30 min | 44.4 nm | 66.1 nm (needs tuning) |
-| S2D 65 min | 99.3 nm | 52.9 nm (needs tuning) |
-
-Full table: `outputs/validation/paper_comparison.csv`
+| Visual | Meaning |
+|---|---|
+| Solid contour | Actual detected particle boundary |
+| Dashed ellipse | Fitted length/width axes |
+| Green | Rod |
+| Blue | Dot |
 
 ## Documentation
 
+- [How it works (beginner)](docs/HOW_IT_WORKS.md)
+- [Source code file guide](src/tem_rods/README.md)
+- [Scripts folder](scripts/README.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Project status](docs/PROJECT_STATUS.md)
 - [Data folder](data/README.md)

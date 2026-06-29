@@ -1,3 +1,12 @@
+"""
+Scale Bar Detector — automatically find the scale bar in a TEM image
+=====================================================================
+
+Published TEM figures usually place a dark horizontal scale bar in the bottom-left
+corner. This file searches that region and estimates how many pixels long the bar
+is, so you do not have to measure it by hand every time.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

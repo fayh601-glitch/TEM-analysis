@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Extract embedded images from the Cossairt 2018 SI PDF (or any PDF).
+Extract PDF Images — pull embedded figures out of a scientific PDF
+===================================================================
 
-Usage:
-    python scripts/extract_pdf_images.py /path/to/c8qm00056e1.pdf --output data/raw
-
-Requires: pip install pymupdf
+Many papers publish supplementary TEM images inside a PDF file. This script
+opens the PDF and saves each embedded image as its own PNG file so you can
+analyze them with the main pipeline.
 """
 
 from __future__ import annotations
@@ -44,19 +44,20 @@ def extract_images(pdf_path: Path, output_dir: Path) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Extract images from a PDF.")
+    parser = argparse.ArgumentParser(
+        description="Extract embedded images from a PDF into data/raw/."
+    )
     parser.add_argument("pdf", type=Path, help="Path to PDF file")
     parser.add_argument(
-        "--output",
         "-o",
+        "--output",
         type=Path,
         default=Path("data/raw"),
-        help="Output directory for extracted images",
+        help="Output directory (default: data/raw)",
     )
     args = parser.parse_args()
     n = extract_images(args.pdf, args.output)
-    print(f"\nExtracted {n} image(s) to {args.output}")
-    print("Next: crop individual TEM panels and fill data/calibration.csv with scale bars.")
+    print(f"Extracted {n} images to {args.output}")
 
 
 if __name__ == "__main__":

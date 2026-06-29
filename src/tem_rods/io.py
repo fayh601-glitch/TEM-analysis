@@ -1,9 +1,17 @@
+"""
+Image Loader — read TEM image files into the program
+=====================================================
+
+This file opens PNG, TIFF, or JPG microscopy images and converts them to a
+grayscale number grid the rest of the pipeline can work with. It handles both
+black-and-white and color inputs automatically.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 from skimage import color, io
 
 

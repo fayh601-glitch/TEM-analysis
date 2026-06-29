@@ -10,14 +10,18 @@ bash scripts/run_demo.sh
 
 | File | Description |
 |---|---|
-| `s2_A_starting_rods_overlay.png` | Annotated TEM — **start here** (green = rod, blue = dot) |
+| `s2_A_starting_rods_overlay.png` | Annotated TEM — **start here** |
 | `s2_A_starting_rods_measurements.csv` | Per-particle length, width, class |
 | `s2_B_30min_*` | Figure S2B (30 min growth) |
 | `s2_D_65min_*` | Figure S2D (65 min growth) |
 
-## Panel A summary (vs paper)
+## Overlay legend
 
-- **Paper:** 27.6 × 2.9 nm  
-- **Pipeline:** 28.4 × 4.7 nm mean rod size  
+| Color / line | Meaning |
+|---|---|
+| Green solid contour | Detected rod boundary |
+| Blue solid contour | Detected dot boundary |
+| Dashed ellipse | Fitted length/width axes |
+| *(rejected blobs)* | Listed in CSV only — not drawn on overlay |
 
 Open the PNG on GitHub: click the file → image preview.

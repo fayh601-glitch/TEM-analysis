@@ -1,3 +1,12 @@
+"""
+Command-Line Interface — the `tem-rods` terminal command
+=========================================================
+
+This file is what you run from the terminal (`tem-rods analyze ...`). It reads
+your options (image path, scale bar, output folder), builds the analysis settings,
+and hands everything off to the main pipeline.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,12 @@
+"""
+Image Preprocessor — clean up a TEM image before particle detection
+=====================================================================
+
+Microscopy images often have uneven brightness and noise. This file normalizes
+contrast and applies a gentle blur so the segmentation step can find particles
+more reliably without chasing every speck of grain.
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -13,7 +22,9 @@ def preprocess(image: np.ndarray, *, gaussian_sigma: float = 1.0) -> np.ndarray:
     if image.ndim != 2:
         raise ValueError("preprocess expects a 2D grayscale image")
 
-    img = exposure.rescale_intensity(image.astype(np.float64), in_range="image", out_range=(0.0, 1.0))
+    img = exposure.rescale_intensity(
+        image.astype(np.float64), in_range="image", out_range=(0.0, 1.0)
+    )
     if gaussian_sigma > 0:
         img = filters.gaussian(img, sigma=gaussian_sigma, preserve_range=True)
     return np.clip(img, 0.0, 1.0)

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Prepare curated Figure S2 panels from extracted SI images and run validation.
+Prepare Paper Dataset — build curated images and validation tables
+===================================================================
 
-Usage:
-    python scripts/prepare_paper_dataset.py
+This script copies the three Figure S2 TEM panels from raw extracted PDF images,
+detects each scale bar, runs the analysis pipeline, and writes calibration CSVs
+plus a comparison table showing how our measurements match the published paper.
 """
 
 from __future__ import annotations

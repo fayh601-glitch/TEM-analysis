@@ -1,20 +1,20 @@
 # Development guide
 
+For a non-technical overview of the pipeline, see [HOW_IT_WORKS.md](HOW_IT_WORKS.md).
+
 ## Repo structure
 
 ```
 TEM-analysis/
-├── src/tem_rods/           # Core Python package
+├── src/tem_rods/           # Core Python package — see src/tem_rods/README.md
 │   ├── cli.py              # `tem-rods analyze` entry point
-│   ├── pipeline.py         # End-to-end orchestration
-│   ├── segment.py          # Particle segmentation
-│   ├── classify.py         # Rod vs dot
+│   ├── pipeline.py         # End-to-end orchestration + overlay export
+│   ├── segment.py          # Particle segmentation + quality filters
+│   ├── classify.py         # Rod / dot / reject
 │   ├── measure.py          # Length / width in nm
 │   ├── scale_bar.py        # Auto-detect 20 nm scale bars
 │   └── ...
-├── scripts/
-│   ├── extract_pdf_images.py
-│   └── prepare_paper_dataset.py
+├── scripts/                # See scripts/README.md
 ├── data/                   # See data/README.md
 ├── outputs/validation/     # Pipeline results vs paper
 ├── tests/
@@ -47,9 +47,26 @@ tem-rods analyze \
   --no-watershed
 ```
 
+## Segmentation quality filters (v0.2)
+
+Default `AnalysisConfig` values in `models.py`:
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `mask_bottom_fraction` | 0.10 | Ignore scale-bar strip |
+| `min_local_contrast` | 0.025 | Particle must be darker than nearby background |
+| `min_solidity` | 0.48 | Reject hollow / irregular blobs |
+| `min_extent` | 0.18 | Reject sparse blobs in bounding box |
+
+Rejected particles appear in CSV with `class=reject` but are omitted from overlay PNGs.
+
 ## Validation baseline
 
-See `outputs/validation/paper_comparison.csv`. Panel S2A matches published length within ~3% using tuned parameters.
+See `outputs/validation/paper_comparison.csv`. Re-run demo after changes:
+
+```bash
+bash scripts/run_demo.sh
+```
 
 ## Suggested next tasks
 

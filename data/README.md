@@ -1,5 +1,9 @@
 # Data directory
 
+Images, calibration tables, and label files used as **inputs** to the analysis
+pipeline. Nothing in this folder is Python code — it is the raw material the
+program reads when you run `tem-rods analyze`.
+
 | Path | Purpose |
 |---|---|
 | `raw/` | Extracted SI images from PDF (local only, gitignored). Run `scripts/extract_pdf_images.py`. |

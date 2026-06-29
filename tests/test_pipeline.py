@@ -1,3 +1,12 @@
+"""
+Pipeline Tests — check that analysis works on synthetic TEM-like images
+========================================================================
+
+These tests build fake images with one rod and one dot, then verify that the
+pipeline finds them, classifies them correctly, and writes output files. They
+run automatically with `pytest` to catch regressions after code changes.
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -26,10 +35,11 @@ def _synthetic_tem_image() -> tuple[np.ndarray, float]:
     return image, nm_per_pixel
 
 
-def test_classify_rod_vs_dot():
+def test_classify_rod_dot_and_reject():
     cfg = AnalysisConfig()
     assert classify_shape(eccentricity=0.95, aspect_ratio=5.0, config=cfg) == ParticleClass.ROD
     assert classify_shape(eccentricity=0.2, aspect_ratio=1.1, config=cfg) == ParticleClass.DOT
+    assert classify_shape(eccentricity=0.80, aspect_ratio=2.0, config=cfg) == ParticleClass.REJECT
 
 
 def test_measure_synthetic_regions():
