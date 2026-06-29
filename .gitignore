@@ -24,6 +24,8 @@ outputs/**
 !outputs/.gitkeep
 !outputs/validation/
 !outputs/validation/paper_comparison.csv
+!outputs/validation/*_measurements.csv
+!outputs/validation/*_overlay.png
 
 .DS_Store
 *.swp

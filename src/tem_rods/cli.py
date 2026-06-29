@@ -36,10 +36,10 @@ def analyze(
         help="Scale bar length in pixels.",
     ),
     output_dir: Path = typer.Option(Path("outputs"), "--output-dir", "-o"),
-    min_area: int = typer.Option(30, help="Minimum particle area in pixels."),
+    min_area: int = typer.Option(150, help="Minimum particle area in pixels (150 recommended for SI rods)."),
     min_eccentricity_rod: float = typer.Option(0.85, help="Min eccentricity to call a particle a rod."),
     min_aspect_ratio_rod: float = typer.Option(1.5, help="Min aspect ratio to call a particle a rod."),
-    no_watershed: bool = typer.Option(False, help="Disable watershed splitting of touching particles."),
+    no_watershed: bool = typer.Option(True, help="Disable watershed (recommended for nanorods)."),
 ) -> None:
     """Segment particles, classify rods vs dots, and export measurements."""
     if nm_per_pixel is None:
