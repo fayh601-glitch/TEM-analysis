@@ -25,6 +25,24 @@ def _length_width_px(region) -> tuple[float, float]:
     return length_px, width_px
 
 
+def major_axis_angle_deg(region) -> float:
+    """
+    Angle of the major axis from +x (columns), for matplotlib Ellipse.
+
+    Matplotlib treats ``width`` as the ellipse diameter before rotation, so this
+    must match the direction of ``major_axis_length``. Skimage's ``orientation``
+    property is measured from the y-axis and does not map directly.
+    """
+    coords = region.coords.astype(float)
+    cy, cx = region.centroid
+    y = coords[:, 0] - cy
+    x = coords[:, 1] - cx
+    cov = np.cov(x, y)
+    evals, evecs = np.linalg.eigh(cov)
+    major = evecs[:, int(np.argmax(evals))]
+    return float(np.degrees(np.arctan2(major[1], major[0])))
+
+
 def measure_particles(
     labels: np.ndarray,
     *,

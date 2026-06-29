@@ -63,7 +63,8 @@ TEM-analysis/
 
 | Command | Description |
 |---|---|
-| `tem-rods analyze --image PATH --scale-bar-nm 20 --scale-bar-pixels N` | Analyze one TEM image |
+| `tem-rods analyze --image PATH --auto-scale-bar` | Analyze with automatic scale-bar detection |
+| `tem-rods analyze --image PATH --scale-bar-nm 20 --scale-bar-pixels N` | Analyze with manual scale bar |
 | `bash scripts/run_demo.sh` | Run all 3 paper images → `outputs/demo/` |
 | `python scripts/extract_pdf_images.py SI.pdf -o data/raw` | Extract images from PDF |
 | `python scripts/prepare_paper_dataset.py` | Regenerate curated data + validation |

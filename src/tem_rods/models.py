@@ -39,7 +39,7 @@ class AnalysisConfig:
     min_local_contrast: float = 0.025
     mask_bottom_fraction: float = 0.10
     watershed_min_distance: int = 10
-    use_watershed: bool = True
+    use_watershed: bool = False
     exclude_border: bool = True
 
 

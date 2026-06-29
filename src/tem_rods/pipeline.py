@@ -19,7 +19,7 @@ from skimage.measure import find_contours, regionprops
 
 from tem_rods.calibrate import validate_nm_per_pixel
 from tem_rods.io import load_grayscale
-from tem_rods.measure import measure_particles, summarize_by_class
+from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_by_class
 from tem_rods.models import AnalysisConfig, AnalysisResult, ParticleClass
 from tem_rods.preprocess import preprocess
 from tem_rods.segment import segment_particles_from_config
@@ -109,11 +109,11 @@ def _write_overlay(
         for contour in find_contours(particle_mask.astype(float), 0.5):
             ax.plot(contour[:, 1], contour[:, 0], color=color, linewidth=1.5)
 
-        angle_deg = np.degrees(region.orientation)
+        angle_deg = major_axis_angle_deg(region)
         ell = Ellipse(
             (cx, cy),
-            width=region.minor_axis_length,
-            height=region.major_axis_length,
+            width=region.major_axis_length,
+            height=region.minor_axis_length,
             angle=angle_deg,
             fill=False,
             edgecolor=color,

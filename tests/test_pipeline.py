@@ -12,9 +12,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from skimage.draw import disk, ellipse
+from skimage.measure import regionprops
 
 from tem_rods.classify import classify_shape
-from tem_rods.measure import measure_particles, summarize_by_class
+from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_by_class
 from tem_rods.models import AnalysisConfig, ParticleClass
 from tem_rods.pipeline import analyze_image
 from tem_rods.preprocess import preprocess
@@ -33,6 +34,15 @@ def _synthetic_tem_image() -> tuple[np.ndarray, float]:
 
     nm_per_pixel = 0.5  # 0.5 nm/px for easy mental math
     return image, nm_per_pixel
+
+
+def test_major_axis_angle_matches_diagonal_rod():
+    image = np.ones((200, 300), dtype=np.float64) * 0.85
+    rr, cc = ellipse(100, 150, 4, 25, rotation=np.deg2rad(45))
+    image[rr, cc] = 0.12
+    region = regionprops(segment_particles(preprocess(image), min_particle_area_px=20))[0]
+    angle = major_axis_angle_deg(region)
+    assert angle == pytest.approx(135.0, abs=5.0)
 
 
 def test_classify_rod_dot_and_reject():

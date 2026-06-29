@@ -18,6 +18,7 @@ from rich.console import Console
 from tem_rods.calibrate import nm_per_pixel_from_scale_bar
 from tem_rods.models import AnalysisConfig
 from tem_rods.pipeline import analyze_image, print_summary
+from tem_rods.scale_bar import detect_scale_bar_pixels
 
 app = typer.Typer(
     name="tem-rods",
@@ -50,6 +51,11 @@ def analyze(
         "--scale-bar-pixels",
         help="Scale bar length in pixels.",
     ),
+    auto_scale_bar: bool = typer.Option(
+        False,
+        "--auto-scale-bar",
+        help="Detect the scale bar automatically (uses --scale-bar-nm, default 20).",
+    ),
     output_dir: Path = typer.Option(Path("outputs"), "--output-dir", "-o"),
     min_area: int = typer.Option(150, help="Minimum particle area in pixels (150 recommended for SI rods)."),
     min_eccentricity_rod: float = typer.Option(0.85, help="Min eccentricity to call a particle a rod."),
@@ -58,11 +64,20 @@ def analyze(
 ) -> None:
     """Segment particles, classify rods vs dots, and export measurements."""
     if nm_per_pixel is None:
-        if scale_bar_nm is None or scale_bar_pixels is None:
-            raise typer.BadParameter(
-                "Provide --nm-per-pixel OR both --scale-bar-nm and --scale-bar-pixels."
+        if auto_scale_bar:
+            bar_nm = scale_bar_nm if scale_bar_nm is not None else 20.0
+            bar_px, nm_per_pixel = detect_scale_bar_pixels(image, scale_bar_nm=bar_nm)
+            console.print(
+                f"Auto scale bar: {bar_px:.1f} px for {bar_nm:g} nm "
+                f"→ {nm_per_pixel:.4f} nm/pixel"
             )
-        nm_per_pixel = nm_per_pixel_from_scale_bar(scale_bar_nm, scale_bar_pixels)
+        elif scale_bar_nm is None or scale_bar_pixels is None:
+            raise typer.BadParameter(
+                "Provide --nm-per-pixel, --auto-scale-bar, "
+                "or both --scale-bar-nm and --scale-bar-pixels."
+            )
+        else:
+            nm_per_pixel = nm_per_pixel_from_scale_bar(scale_bar_nm, scale_bar_pixels)
 
     config = AnalysisConfig(
         min_particle_area_px=min_area,
