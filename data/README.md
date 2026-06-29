@@ -20,6 +20,7 @@ program reads when you run `tem-rods analyze`.
 | `s2_A_starting_rods.png` | S2A | 27.6 × 2.9 |
 | `s2_B_30min.png` | S2B | 44.4 × 4.4 |
 | `s2_D_65min.png` | S2D | 99.3 × 5.9 |
+| `enright_s2A_user_screenshot.png` | S2A (user screenshot) | 27.6 × 2.9 |
 
 Regenerate calibration, labels, and validation with:
 

@@ -19,7 +19,7 @@ from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_
 from tem_rods.models import AnalysisConfig, ParticleClass
 from tem_rods.pipeline import analyze_image
 from tem_rods.preprocess import preprocess
-from tem_rods.segment import segment_particles
+from tem_rods.segment import _should_split_region, segment_particles
 
 
 def _synthetic_tem_image() -> tuple[np.ndarray, float]:
@@ -43,6 +43,55 @@ def test_major_axis_angle_matches_diagonal_rod():
     region = regionprops(segment_particles(preprocess(image), min_particle_area_px=20))[0]
     angle = major_axis_angle_deg(region)
     assert angle == pytest.approx(135.0, abs=5.0)
+
+
+def test_should_split_region_detects_wide_merged_blob():
+    """Wide low-aspect blobs should be flagged for splitting."""
+    image = np.ones((120, 120), dtype=np.float64) * 0.85
+    rr, cc = ellipse(60, 60, 18, 28, rotation=0)
+    image[rr, cc] = 0.12
+    region = regionprops(
+        segment_particles(
+            preprocess(image, gaussian_sigma=0.5),
+            min_particle_area_px=40,
+            split_touching_particles=False,
+            morphology_closing_radius=0,
+            min_local_contrast=0.0,
+            min_solidity=0.0,
+            min_extent=0.0,
+            mask_bottom_fraction=0.0,
+        )
+    )[0]
+    assert _should_split_region(
+        region,
+        split_min_area_px=120,
+        split_max_aspect_ratio=4.5,
+        split_min_width_px=22.0,
+    )
+
+
+def test_should_not_split_single_slender_rod():
+    image = np.ones((120, 200), dtype=np.float64) * 0.85
+    rr, cc = ellipse(60, 100, 4, 22, rotation=0)
+    image[rr, cc] = 0.12
+    region = regionprops(
+        segment_particles(
+            preprocess(image, gaussian_sigma=0.5),
+            min_particle_area_px=40,
+            split_touching_particles=False,
+            morphology_closing_radius=0,
+            min_local_contrast=0.0,
+            min_solidity=0.0,
+            min_extent=0.0,
+            mask_bottom_fraction=0.0,
+        )
+    )[0]
+    assert not _should_split_region(
+        region,
+        split_min_area_px=500,
+        split_max_aspect_ratio=4.5,
+        split_min_width_px=22.0,
+    )
 
 
 def test_classify_rod_dot_and_reject():

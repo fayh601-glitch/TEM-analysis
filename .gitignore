@@ -28,6 +28,8 @@ outputs/**
 !outputs/validation/*_overlay.png
 !outputs/demo/
 !outputs/demo/**
+!outputs/user_runs/
+!outputs/user_runs/**
 
 .DS_Store
 *.swp

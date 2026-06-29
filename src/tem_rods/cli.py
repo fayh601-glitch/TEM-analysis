@@ -60,7 +60,15 @@ def analyze(
     min_area: int = typer.Option(150, help="Minimum particle area in pixels (150 recommended for SI rods)."),
     min_eccentricity_rod: float = typer.Option(0.85, help="Min eccentricity to call a particle a rod."),
     min_aspect_ratio_rod: float = typer.Option(1.5, help="Min aspect ratio to call a particle a rod."),
-    no_watershed: bool = typer.Option(True, help="Disable watershed (recommended for nanorods)."),
+    no_watershed: bool = typer.Option(True, help="Disable global watershed (usually keep off)."),
+    no_split_touching: bool = typer.Option(
+        False,
+        help="Disable splitting of large merged blobs into separate rods.",
+    ),
+    split_min_area: int = typer.Option(
+        500,
+        help="Split blobs larger than this area (px) that likely contain 2+ rods.",
+    ),
 ) -> None:
     """Segment particles, classify rods vs dots, and export measurements."""
     if nm_per_pixel is None:
@@ -84,6 +92,8 @@ def analyze(
         min_eccentricity_rod=min_eccentricity_rod,
         min_aspect_ratio_rod=min_aspect_ratio_rod,
         use_watershed=not no_watershed,
+        split_touching_particles=not no_split_touching,
+        split_min_area_px=split_min_area,
     )
 
     result = analyze_image(

@@ -50,7 +50,8 @@ TEM-analysis/
 │   ├── curated/               ← Figure S2 TEM panels
 │   └── calibration.csv
 ├── outputs/                   ← Analysis results (CSVs + overlay PNGs)
-│   ├── demo/                  ← Committed demo run
+│   ├── demo/                  ← Committed demo run (3 paper panels)
+│   ├── user_runs/             ← User-uploaded / screenshot analyses
 │   └── validation/            ← Comparison to published stats
 ├── tests/                     ← Automatic tests (`pytest`)
 └── docs/

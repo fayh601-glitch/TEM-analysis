@@ -38,8 +38,14 @@ class AnalysisConfig:
     min_extent: float = 0.18
     min_local_contrast: float = 0.025
     mask_bottom_fraction: float = 0.10
+    morphology_closing_radius: int = 1
     watershed_min_distance: int = 10
     use_watershed: bool = False
+    split_touching_particles: bool = True
+    split_min_area_px: int = 500
+    split_max_aspect_ratio: float = 4.5
+    split_min_width_px: float = 22.0
+    split_watershed_min_distance: int = 5
     exclude_border: bool = True
 
 
