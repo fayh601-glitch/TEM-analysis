@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run Demo Analysis — analyze all three paper TEM images at once
 #
-# This script runs the full pipeline on the three curated Figure S2 images from
-# Enright 2018 and saves CSV + overlay results into outputs/demo/.
+# Uses the enright_rods preset (tuned cluster splitting + rod classification).
+# Overlays show green=rod, blue=dot, orange dashed=reject.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -14,6 +14,7 @@ run_one() {
   local bar_px=$2
   echo "=== Analyzing $image ==="
   tem-rods analyze \
+    --preset enright_rods \
     --image "$image" \
     --scale-bar-nm 20 \
     --scale-bar-pixels "$bar_px" \

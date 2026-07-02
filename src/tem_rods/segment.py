@@ -14,10 +14,10 @@ import numpy as np
 from scipy import ndimage as ndi
 from skimage import morphology, segmentation
 from skimage.feature import peak_local_max
-from skimage.filters import threshold_otsu
+from skimage.filters import threshold_local, threshold_otsu
 from skimage.measure import label, regionprops
 
-from tem_rods.models import AnalysisConfig
+from tem_rods.models import AnalysisConfig, ThresholdMode
 
 
 def segment_particles(
@@ -38,19 +38,24 @@ def segment_particles(
     split_max_aspect_ratio: float = 4.5,
     split_min_width_px: float = 22.0,
     split_watershed_min_distance: int = 5,
+    threshold_mode: ThresholdMode = ThresholdMode.AUTO,
+    percentile_threshold: float = 40.0,
+    local_threshold_block_size: int = 35,
+    local_threshold_offset: float = 0.01,
+    exclude_bbox: tuple[int, int, int, int] | None = None,
 ) -> np.ndarray:
     """
     Segment dark particles on a lighter TEM background.
 
     Returns an integer label image (0 = background).
     """
-    thresh = threshold_otsu(image)
-    # Particles are typically darker than the carbon film background.
-    binary = image < thresh
-    if binary.mean() > 0.75:
-        # Screenshot exports can skew Otsu so almost the whole frame looks "dark".
-        thresh = float(np.percentile(image, 40))
-        binary = image < thresh
+    binary = _binarize_particles(
+        image,
+        threshold_mode=threshold_mode,
+        percentile_threshold=percentile_threshold,
+        local_threshold_block_size=local_threshold_block_size,
+        local_threshold_offset=local_threshold_offset,
+    )
     binary = morphology.remove_small_objects(binary, min_size=min_particle_area_px)
     binary = morphology.binary_opening(binary, morphology.disk(1))
     if morphology_closing_radius > 0:
@@ -58,6 +63,9 @@ def segment_particles(
 
     if mask_bottom_fraction > 0:
         binary = _mask_bottom_region(binary, mask_bottom_fraction)
+
+    if exclude_bbox is not None:
+        binary = _mask_bbox(binary, exclude_bbox)
 
     if exclude_border:
         binary = segmentation.clear_border(binary)
@@ -74,7 +82,7 @@ def segment_particles(
             split_max_aspect_ratio=split_max_aspect_ratio,
             split_min_width_px=split_min_width_px,
             split_watershed_min_distance=split_watershed_min_distance,
-            min_piece_area_px=max(min_particle_area_px // 2, 30),
+            min_piece_area_px=max(min_particle_area_px, 60),
         )
 
     return _filter_regions(
@@ -88,8 +96,14 @@ def segment_particles(
     )
 
 
-def segment_particles_from_config(image: np.ndarray, config: AnalysisConfig) -> np.ndarray:
+def segment_particles_from_config(
+    image: np.ndarray,
+    config: AnalysisConfig,
+    *,
+    exclude_bbox: tuple[int, int, int, int] | None = None,
+) -> np.ndarray:
     """Convenience wrapper that passes all segmentation settings from AnalysisConfig."""
+    bbox = exclude_bbox if config.use_scale_bar_bbox_mask else None
     return segment_particles(
         image,
         min_particle_area_px=config.min_particle_area_px,
@@ -107,6 +121,11 @@ def segment_particles_from_config(image: np.ndarray, config: AnalysisConfig) -> 
         split_max_aspect_ratio=config.split_max_aspect_ratio,
         split_min_width_px=config.split_min_width_px,
         split_watershed_min_distance=config.split_watershed_min_distance,
+        threshold_mode=config.threshold_mode,
+        percentile_threshold=config.percentile_threshold,
+        local_threshold_block_size=config.local_threshold_block_size,
+        local_threshold_offset=config.local_threshold_offset,
+        exclude_bbox=bbox,
     )
 
 
@@ -190,14 +209,32 @@ def _should_split_region(
     split_max_aspect_ratio: float,
     split_min_width_px: float,
 ) -> bool:
-    """Return True when a blob is large/wide enough to be two touching rods."""
+    """
+    Return True when a blob is large/wide enough to be multiple touching rods.
+
+    Slender single rods (high aspect) are never split. Wide or chunky blobs
+    in dense clusters are candidates for watershed separation.
+    """
     if region.area <= split_min_area_px:
         return False
 
     aspect = region.major_axis_length / max(region.minor_axis_length, 1.0)
-    is_wide = region.minor_axis_length >= split_min_width_px
-    is_not_slender = aspect < split_max_aspect_ratio
-    return is_wide or is_not_slender
+    if aspect >= split_max_aspect_ratio:
+        return False
+
+    # Wide minor axis → likely parallel rods merged side-by-side
+    if region.minor_axis_length >= split_min_width_px:
+        return True
+
+    # Only split chunky clusters (low aspect, very large area) — avoids fragmenting single rods
+    if (
+        region.area >= int(split_min_area_px * 1.5)
+        and aspect < split_max_aspect_ratio
+        and region.minor_axis_length >= split_min_width_px * 0.9
+    ):
+        return True
+
+    return False
 
 
 def _relabel_sequential(labels: np.ndarray) -> np.ndarray:
@@ -215,6 +252,52 @@ def _mask_bottom_region(binary: np.ndarray, bottom_fraction: float) -> np.ndarra
     cutoff = int(binary.shape[0] * (1.0 - bottom_fraction))
     masked[cutoff:, :] = False
     return masked
+
+
+def _mask_bbox(
+    binary: np.ndarray,
+    bbox: tuple[int, int, int, int],
+) -> np.ndarray:
+    """Remove a rectangular region (e.g. detected scale bar + label)."""
+    masked = binary.copy()
+    row_min, col_min, row_max, col_max = bbox
+    masked[row_min:row_max, col_min:col_max] = False
+    return masked
+
+
+def _binarize_particles(
+    image: np.ndarray,
+    *,
+    threshold_mode: ThresholdMode,
+    percentile_threshold: float,
+    local_threshold_block_size: int,
+    local_threshold_offset: float,
+) -> np.ndarray:
+    mode = threshold_mode
+    if mode == ThresholdMode.AUTO:
+        trial = threshold_otsu(image)
+        if (image < trial).mean() > 0.75:
+            mode = ThresholdMode.PERCENTILE
+        elif float(np.std(image)) > 0.12:
+            mode = ThresholdMode.LOCAL
+        else:
+            mode = ThresholdMode.OTSU
+
+    if mode == ThresholdMode.PERCENTILE:
+        thresh = float(np.percentile(image, percentile_threshold))
+        return image < thresh
+    if mode == ThresholdMode.LOCAL:
+        block = local_threshold_block_size
+        if block % 2 == 0:
+            block += 1
+        local_thresh = threshold_local(
+            image,
+            block_size=block,
+            offset=local_threshold_offset,
+        )
+        return image < local_thresh
+    thresh = float(threshold_otsu(image))
+    return image < thresh
 
 
 def _local_contrast(image: np.ndarray, particle_mask: np.ndarray, *, padding: int = 5) -> float:

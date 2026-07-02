@@ -23,6 +23,15 @@ class ParticleClass(str, Enum):
     REJECT = "reject"
 
 
+class ThresholdMode(str, Enum):
+    """How to binarize particles vs background."""
+
+    OTSU = "otsu"
+    PERCENTILE = "percentile"
+    LOCAL = "local"
+    AUTO = "auto"
+
+
 @dataclass(frozen=True)
 class AnalysisConfig:
     """Tunable parameters for segmentation and rod/dot classification."""
@@ -38,6 +47,7 @@ class AnalysisConfig:
     min_extent: float = 0.18
     min_local_contrast: float = 0.025
     mask_bottom_fraction: float = 0.10
+    use_scale_bar_bbox_mask: bool = False
     morphology_closing_radius: int = 1
     watershed_min_distance: int = 10
     use_watershed: bool = False
@@ -47,6 +57,17 @@ class AnalysisConfig:
     split_min_width_px: float = 22.0
     split_watershed_min_distance: int = 5
     exclude_border: bool = True
+    threshold_mode: ThresholdMode = ThresholdMode.AUTO
+    percentile_threshold: float = 40.0
+    local_threshold_block_size: int = 35
+    local_threshold_offset: float = 0.01
+    crop_margins: bool = False
+    use_clahe: bool = False
+    show_rejected_on_overlay: bool = True
+    write_segmentation_debug: bool = False
+    promote_borderline_rejects: bool = False
+    borderline_min_eccentricity: float = 0.78
+    borderline_min_aspect_ratio: float = 1.35
 
 
 @dataclass
@@ -72,6 +93,10 @@ class AnalysisResult:
     particles: list[ParticleMeasurement] = field(default_factory=list)
     overlay_path: Path | None = None
     csv_path: Path | None = None
+    scale_bar_pixels: float | None = None
+    scale_bar_nm: float | None = None
+    warnings: list[str] = field(default_factory=list)
+    show_rejected_on_overlay: bool = True
 
     @property
     def rods(self) -> list[ParticleMeasurement]:

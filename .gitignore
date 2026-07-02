@@ -26,6 +26,7 @@ outputs/**
 !outputs/validation/paper_comparison.csv
 !outputs/validation/*_measurements.csv
 !outputs/validation/*_overlay.png
+!outputs/validation/*_segments_debug.png
 !outputs/demo/
 !outputs/demo/**
 !outputs/user_runs/

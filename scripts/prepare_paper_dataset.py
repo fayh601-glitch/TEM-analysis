@@ -44,7 +44,10 @@ PANELS = [
     },
 ]
 
-CONFIG = AnalysisConfig(min_particle_area_px=150, use_watershed=False)
+from tem_rods.presets import get_preset
+
+# Enright SI Figure S2 — use the tuned preset (orange rejects + cluster splitting).
+CONFIG = get_preset("enright_rods").config
 
 
 def main() -> None:

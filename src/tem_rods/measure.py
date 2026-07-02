@@ -65,6 +65,13 @@ def measure_particles(
             aspect_ratio=aspect_ratio,
             config=cfg,
         )
+        if (
+            particle_class == ParticleClass.REJECT
+            and cfg.promote_borderline_rejects
+            and eccentricity >= cfg.borderline_min_eccentricity
+            and aspect_ratio >= cfg.borderline_min_aspect_ratio
+        ):
+            particle_class = ParticleClass.ROD
 
         area_px = int(region.area)
         cy, cx = region.centroid

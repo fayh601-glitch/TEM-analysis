@@ -13,7 +13,13 @@ import numpy as np
 from skimage import exposure, filters
 
 
-def preprocess(image: np.ndarray, *, gaussian_sigma: float = 1.0) -> np.ndarray:
+def preprocess(
+    image: np.ndarray,
+    *,
+    gaussian_sigma: float = 1.0,
+    crop_margins: bool = False,
+    use_clahe: bool = False,
+) -> np.ndarray:
     """
     Enhance contrast for TEM images where particles are darker than background.
 
@@ -22,9 +28,16 @@ def preprocess(image: np.ndarray, *, gaussian_sigma: float = 1.0) -> np.ndarray:
     if image.ndim != 2:
         raise ValueError("preprocess expects a 2D grayscale image")
 
-    img = exposure.rescale_intensity(
-        image.astype(np.float64), in_range="image", out_range=(0.0, 1.0)
-    )
+    img = image.astype(np.float64)
+    if img.max() > 1.5:
+        img = img / 255.0
+
+    if crop_margins:
+        img = crop_white_margins(img)
+
+    img = exposure.rescale_intensity(img, in_range="image", out_range=(0.0, 1.0))
+    if use_clahe:
+        img = exposure.equalize_adapthist(img, clip_limit=0.02)
     if gaussian_sigma > 0:
         img = filters.gaussian(img, sigma=gaussian_sigma, preserve_range=True)
     return np.clip(img, 0.0, 1.0)

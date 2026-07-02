@@ -65,8 +65,33 @@ def test_should_split_region_detects_wide_merged_blob():
     assert _should_split_region(
         region,
         split_min_area_px=120,
-        split_max_aspect_ratio=4.5,
-        split_min_width_px=22.0,
+        split_max_aspect_ratio=5.5,
+        split_min_width_px=12.0,
+    )
+
+
+def test_should_split_large_chunky_cluster():
+    """Large wide blobs with modest elongation should be split."""
+    image = np.ones((160, 160), dtype=np.float64) * 0.85
+    rr, cc = ellipse(80, 80, 22, 30, rotation=np.deg2rad(25))
+    image[rr, cc] = 0.12
+    region = regionprops(
+        segment_particles(
+            preprocess(image, gaussian_sigma=0.5),
+            min_particle_area_px=40,
+            split_touching_particles=False,
+            morphology_closing_radius=0,
+            min_local_contrast=0.0,
+            min_solidity=0.0,
+            min_extent=0.0,
+            mask_bottom_fraction=0.0,
+        )
+    )[0]
+    assert _should_split_region(
+        region,
+        split_min_area_px=280,
+        split_max_aspect_ratio=5.0,
+        split_min_width_px=18.0,
     )
 
 
@@ -126,6 +151,47 @@ def test_summarize_by_class():
     assert rod_stats["mean_length_nm"] > rod_stats["mean_width_nm"]
 
 
+def test_promote_borderline_rejects_to_rod():
+    cfg = AnalysisConfig(
+        promote_borderline_rejects=True,
+        borderline_min_eccentricity=0.76,
+        borderline_min_aspect_ratio=1.32,
+        min_eccentricity_rod=0.85,
+        min_aspect_ratio_rod=1.5,
+    )
+    image = np.ones((120, 200), dtype=np.float64) * 0.85
+    rr, cc = ellipse(60, 100, 5, 18, rotation=0)
+    image[rr, cc] = 0.12
+    labels = segment_particles(
+        preprocess(image, gaussian_sigma=0.5),
+        min_particle_area_px=40,
+        split_touching_particles=False,
+        morphology_closing_radius=0,
+        min_local_contrast=0.0,
+        min_solidity=0.0,
+        min_extent=0.0,
+        mask_bottom_fraction=0.0,
+    )
+    particles = measure_particles(labels, nm_per_pixel=0.5, config=cfg)
+    assert len(particles) == 1
+    assert particles[0].particle_class == ParticleClass.ROD
+
+
+def test_analyze_image_writes_debug_overlay(tmp_path):
+    image, nm_per_pixel = _synthetic_tem_image()
+    image_path = tmp_path / "synthetic.png"
+    from skimage import io
+
+    io.imsave(image_path, (image * 255).astype(np.uint8))
+
+    out_dir = tmp_path / "outputs"
+    cfg = AnalysisConfig(show_rejected_on_overlay=True, write_segmentation_debug=True)
+    result = analyze_image(image_path, nm_per_pixel, output_dir=out_dir, config=cfg)
+
+    debug_path = out_dir / "synthetic_segments_debug.png"
+    assert debug_path.exists()
+
+
 def test_analyze_image_writes_outputs(tmp_path):
     image, nm_per_pixel = _synthetic_tem_image()
     image_path = tmp_path / "synthetic.png"
@@ -134,9 +200,11 @@ def test_analyze_image_writes_outputs(tmp_path):
     io.imsave(image_path, (image * 255).astype(np.uint8))
 
     out_dir = tmp_path / "outputs"
-    result = analyze_image(image_path, nm_per_pixel, output_dir=out_dir)
+    cfg = AnalysisConfig(show_rejected_on_overlay=True)
+    result = analyze_image(image_path, nm_per_pixel, output_dir=out_dir, config=cfg)
 
     assert len(result.particles) >= 2
+    assert result.show_rejected_on_overlay is True
     assert result.csv_path is not None
     assert result.overlay_path is not None
     assert result.csv_path.exists()
