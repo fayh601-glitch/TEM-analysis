@@ -58,6 +58,7 @@ def _merge_config(
     hide_rejected: bool,
     analysis_mode: Optional[AnalysisMode],
     max_rods: Optional[int],
+    max_dots: Optional[int],
     sample_seed: int,
 ) -> AnalysisConfig:
     if preset_name:
@@ -68,6 +69,8 @@ def _merge_config(
             config = replace(config, analysis_mode=analysis_mode)
         if max_rods is not None:
             config = replace(config, max_rods=max_rods, sample_seed=sample_seed)
+        if max_dots is not None:
+            config = replace(config, max_dots=max_dots, sample_seed=sample_seed)
         return config
 
     return replace(
@@ -81,6 +84,7 @@ def _merge_config(
         show_rejected_on_overlay=not hide_rejected,
         analysis_mode=analysis_mode or AnalysisMode.BOTH,
         max_rods=max_rods,
+        max_dots=max_dots,
         sample_seed=sample_seed,
     )
 
@@ -142,7 +146,12 @@ def analyze(
         "--max-rods",
         help="Report at most N rods (random subsample; use --sample-seed to reproduce).",
     ),
-    sample_seed: int = typer.Option(42, "--sample-seed", help="Random seed for --max-rods."),
+    max_dots: Optional[int] = typer.Option(
+        None,
+        "--max-dots",
+        help="Report at most N dots (random subsample; use --sample-seed to reproduce).",
+    ),
+    sample_seed: int = typer.Option(42, "--sample-seed", help="Random seed for --max-rods / --max-dots."),
 ) -> None:
     """Segment particles, classify rods vs dots, and export measurements."""
     preset_obj = get_preset(preset) if preset else None
@@ -179,6 +188,7 @@ def analyze(
         hide_rejected=hide_rejected,
         analysis_mode=analysis_mode,
         max_rods=max_rods,
+        max_dots=max_dots,
         sample_seed=sample_seed,
     )
 

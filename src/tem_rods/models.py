@@ -83,6 +83,7 @@ class AnalysisConfig:
     borderline_min_aspect_ratio: float = 1.35
     analysis_mode: AnalysisMode = AnalysisMode.BOTH
     max_rods: int | None = None
+    max_dots: int | None = None
     sample_seed: int = 42
 
 
@@ -115,6 +116,7 @@ class AnalysisResult:
     show_rejected_on_overlay: bool = True
     analysis_mode: AnalysisMode = AnalysisMode.BOTH
     selected_rod_ids: set[int] | None = None
+    selected_dot_ids: set[int] | None = None
 
     @property
     def rods(self) -> list[ParticleMeasurement]:
@@ -127,6 +129,14 @@ class AnalysisResult:
         if self.selected_rod_ids is None:
             return rods
         return [p for p in rods if p.particle_id in self.selected_rod_ids]
+
+    @property
+    def reported_dots(self) -> list[ParticleMeasurement]:
+        """Dots included in CSV/overlay after optional --max-dots subsampling."""
+        dots = self.dots
+        if self.selected_dot_ids is None:
+            return dots
+        return [p for p in dots if p.particle_id in self.selected_dot_ids]
 
     @property
     def dots(self) -> list[ParticleMeasurement]:
