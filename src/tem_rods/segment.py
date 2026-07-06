@@ -56,11 +56,13 @@ def segment_particles(
         local_threshold_block_size=local_threshold_block_size,
         local_threshold_offset=local_threshold_offset,
     )
+    # Remove tiny specks — real nanorods are larger than a few pixels across.
     binary = morphology.remove_small_objects(binary, min_size=min_particle_area_px)
     binary = morphology.binary_opening(binary, morphology.disk(1))
     if morphology_closing_radius > 0:
         binary = morphology.binary_closing(binary, morphology.disk(morphology_closing_radius))
 
+    # Scale-bar text and the white bar line would otherwise be counted as particles.
     if mask_bottom_fraction > 0:
         binary = _mask_bottom_region(binary, mask_bottom_fraction)
 
@@ -76,6 +78,7 @@ def segment_particles(
         labels = label(binary)
 
     if split_touching_particles:
+        # Large merged blobs in dense clusters may contain several touching rods.
         labels = _split_touching_regions(
             labels,
             split_min_area_px=split_min_area_px,

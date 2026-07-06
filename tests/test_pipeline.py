@@ -14,9 +14,9 @@ import pytest
 from skimage.draw import disk, ellipse
 from skimage.measure import regionprops
 
-from tem_rods.classify import classify_shape
+from tem_rods.classify import apply_analysis_mode, classify_shape
 from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_by_class
-from tem_rods.models import AnalysisConfig, ParticleClass
+from tem_rods.models import AnalysisConfig, AnalysisMode, ParticleClass
 from tem_rods.pipeline import analyze_image
 from tem_rods.preprocess import preprocess
 from tem_rods.segment import _should_split_region, segment_particles
@@ -124,6 +124,51 @@ def test_classify_rod_dot_and_reject():
     assert classify_shape(eccentricity=0.95, aspect_ratio=5.0, config=cfg) == ParticleClass.ROD
     assert classify_shape(eccentricity=0.2, aspect_ratio=1.1, config=cfg) == ParticleClass.DOT
     assert classify_shape(eccentricity=0.80, aspect_ratio=2.0, config=cfg) == ParticleClass.REJECT
+
+
+def test_rods_only_mode_rejects_dots():
+    cfg = AnalysisConfig(analysis_mode=AnalysisMode.RODS)
+    assert classify_shape(eccentricity=0.2, aspect_ratio=1.1, config=cfg) == ParticleClass.REJECT
+    assert classify_shape(eccentricity=0.95, aspect_ratio=5.0, config=cfg) == ParticleClass.ROD
+
+
+def test_dots_only_mode_rejects_rods():
+    cfg = AnalysisConfig(analysis_mode=AnalysisMode.DOTS)
+    assert classify_shape(eccentricity=0.95, aspect_ratio=5.0, config=cfg) == ParticleClass.REJECT
+    assert classify_shape(eccentricity=0.2, aspect_ratio=1.1, config=cfg) == ParticleClass.DOT
+
+
+def test_apply_analysis_mode_passthrough():
+    assert apply_analysis_mode(ParticleClass.REJECT, AnalysisMode.RODS) == ParticleClass.REJECT
+
+
+def test_max_rods_subsample(tmp_path):
+    image, nm_per_pixel = _synthetic_tem_image()
+    image_path = tmp_path / "synthetic_many.png"
+    from skimage import io
+
+    # Many rod-like ellipses
+    big = np.ones((300, 400), dtype=np.float64) * 0.85
+    for i in range(15):
+        rr, cc = ellipse(50 + i * 12, 80 + (i % 5) * 60, 4, 18, rotation=0)
+        big[rr, cc] = 0.12
+    io.imsave(image_path, (big * 255).astype(np.uint8))
+
+    cfg = AnalysisConfig(
+        min_particle_area_px=20,
+        split_touching_particles=False,
+        mask_bottom_fraction=0.0,
+        min_local_contrast=0.0,
+        min_solidity=0.0,
+        min_extent=0.0,
+        max_rods=5,
+        sample_seed=7,
+    )
+    result = analyze_image(image_path, nm_per_pixel, config=cfg, save_outputs=False)
+    assert len(result.rods) >= 5
+    assert len(result.reported_rods) == 5
+    assert result.selected_rod_ids is not None
+    assert len(result.selected_rod_ids) == 5
 
 
 def test_measure_synthetic_regions():

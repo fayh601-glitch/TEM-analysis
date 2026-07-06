@@ -57,15 +57,23 @@ For each labeled blob, the program computes:
 
 ### 6. Classify (`classify.py`)
 
-Each blob gets one of three labels:
+Each blob gets one of three labels (then filtered by **analysis mode**):
 
 | Class | Criteria |
 |---|---|
-| **Rod** | High eccentricity **and** aspect ratio ≥ 1.5 |
+| **Rod** | High eccentricity **and** aspect ratio ≥ threshold |
 | **Dot** | Low eccentricity **and** roughly round |
-| **Reject** | Ambiguous — elongated smudge, not a confident rod or dot |
+| **Reject** | Ambiguous — or wrong shape for the selected mode |
 
-Rejected blobs appear in the CSV but **not** on the overlay PNG.
+**Analysis modes** (set with `--mode`):
+
+| Mode | Behavior |
+|------|----------|
+| `rods` | Round blobs become rejects (for rod-only samples) |
+| `dots` | Elongated blobs become rejects (for dot-only samples) |
+| `both` | Report both rods and dots |
+
+Rejected blobs appear on the overlay in **orange** when enabled (default on).
 
 ### 7. Export (`pipeline.py`)
 
@@ -79,6 +87,7 @@ Rejected blobs appear in the CSV but **not** on the overlay PNG.
   ─────────────  solid green contour  =  actual detected particle boundary
   - - - - - - -  dashed ellipse       =  fitted length/width axes
   R 28.0×3.5 nm  text label           =  class + size
+  orange dashed  contour              =  reject (ambiguous)
 ```
 
 ## Folder map (whole repo)

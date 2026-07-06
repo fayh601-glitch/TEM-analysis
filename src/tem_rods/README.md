@@ -30,19 +30,28 @@ cli.py  ──►  pipeline.py  ──►  preprocess.py  ──►  segment.py
 | [`preprocess.py`](preprocess.py) | Normalizes brightness and reduces noise |
 | [`segment.py`](segment.py) | Finds dark particle blobs; filters background noise |
 | [`measure.py`](measure.py) | Computes length, width, and shape numbers |
-| [`classify.py`](classify.py) | Labels each blob as **rod**, **dot**, or **reject** |
-| [`models.py`](models.py) | Shared settings and result data types |
+| [`classify.py`](classify.py) | Labels each blob as **rod**, **dot**, or **reject**; applies analysis mode |
+| [`models.py`](models.py) | Shared settings (`AnalysisMode`, thresholds) and result data types |
+| [`presets.py`](presets.py) | Tuned config bundles (`enright_rods`, `dots_only`, `screenshot`, …) |
 | [`calibrate.py`](calibrate.py) | Converts scale-bar info to nm/pixel |
 | [`scale_bar.py`](scale_bar.py) | Automatically detects the scale bar in an image |
 | [`__init__.py`](__init__.py) | Package version marker |
 
-## Particle classes
+## Analysis modes
+
+Set with `--mode rods`, `--mode dots`, or `--mode both` (CLI) or in `AnalysisConfig.analysis_mode`.
+
+| Mode | Use when |
+|------|----------|
+| `rods` | Sample has only nanorods — round fragments become rejects |
+| `dots` | Sample has only spherical QDs |
+| `both` | Mixed or unknown sample |
 
 | Class | Meaning |
 |---|---|
 | **rod** | Elongated nanoparticle (nanorod) |
 | **dot** | Roughly round nanoparticle |
-| **reject** | Detected blob that failed shape checks — shown in CSV but not on overlay |
+| **reject** | Ambiguous blob or wrong shape for the selected mode — orange on overlay |
 
 ## Further reading
 

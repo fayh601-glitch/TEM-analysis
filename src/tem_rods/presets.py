@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tem_rods.models import AnalysisConfig, ThresholdMode
+from tem_rods.models import AnalysisConfig, AnalysisMode, ThresholdMode
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,25 @@ PRESETS: dict[str, ImagePreset] = {
             crop_margins=False,
             show_rejected_on_overlay=True,
             write_segmentation_debug=True,
+            analysis_mode=AnalysisMode.RODS,
+        ),
+    ),
+    "dots_only": ImagePreset(
+        name="dots_only",
+        description="Spherical quantum dots / round nanoparticles only.",
+        default_scale_bar_nm=20.0,
+        config=AnalysisConfig(
+            min_particle_area_px=80,
+            max_eccentricity_dot=0.78,
+            max_aspect_ratio_dot=1.35,
+            min_eccentricity_rod=0.90,
+            min_aspect_ratio_rod=1.8,
+            split_touching_particles=False,
+            mask_bottom_fraction=0.10,
+            threshold_mode=ThresholdMode.OTSU,
+            show_rejected_on_overlay=True,
+            write_segmentation_debug=True,
+            analysis_mode=AnalysisMode.DOTS,
         ),
     ),
     "screenshot": ImagePreset(

@@ -5,7 +5,9 @@ Python package — they set up data or run batch analyses.
 
 | Script | What it does |
 |---|---|
+| [`analyze_my_image.sh`](analyze_my_image.sh) | **Start here** — guided prompts for beginners (no flags to remember) |
 | [`run_demo.sh`](run_demo.sh) | Analyze all three curated paper images and save results to `outputs/demo/` |
+| [`build_manual_pdf.py`](build_manual_pdf.py) | Regenerate `docs/TEM-analysis-Manual.pdf` from `docs/MANUAL.md` |
 | [`extract_pdf_images.py`](extract_pdf_images.py) | Pull embedded TEM images out of a supplementary PDF into `data/raw/` |
 | [`prepare_paper_dataset.py`](prepare_paper_dataset.py) | Rebuild curated images, calibration CSV, labels, and validation comparison |
 

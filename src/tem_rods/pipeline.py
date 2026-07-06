@@ -26,6 +26,31 @@ from tem_rods.scale_bar import ScaleBarDetection
 from tem_rods.segment import segment_particles_from_config
 
 
+def _select_rod_ids(
+    particles: list,
+    max_rods: int,
+    seed: int,
+) -> set[int]:
+    """Randomly pick up to max_rods rod particle_ids for reporting."""
+    rods = [p for p in particles if p.particle_class == ParticleClass.ROD]
+    if len(rods) <= max_rods:
+        return {p.particle_id for p in rods}
+    rng = np.random.default_rng(seed)
+    pick = rng.choice(len(rods), size=max_rods, replace=False)
+    return {rods[int(i)].particle_id for i in pick}
+
+
+def _particle_is_drawn(particle, result: AnalysisResult) -> bool:
+    """Whether a particle appears on the overlay and in the exported CSV."""
+    if (
+        particle.particle_class == ParticleClass.ROD
+        and result.selected_rod_ids is not None
+        and particle.particle_id not in result.selected_rod_ids
+    ):
+        return False
+    return True
+
+
 def analyze_image(
     image_path: str | Path,
     nm_per_pixel: float,
@@ -44,6 +69,7 @@ def analyze_image(
     warnings: list[str] = []
 
     image = load_grayscale(image_path)
+    # Preprocess reduces film grain so thresholding does not count every speck as a particle.
     processed = preprocess(
         image,
         gaussian_sigma=cfg.gaussian_sigma,
@@ -51,9 +77,20 @@ def analyze_image(
         use_clahe=cfg.use_clahe,
     )
     exclude_bbox = scale_bar.bbox if scale_bar is not None and cfg.use_scale_bar_bbox_mask else None
+    # Segmentation is the hardest step: find dark blobs and drop scale-bar strip / noise.
     labels = segment_particles_from_config(processed, cfg, exclude_bbox=exclude_bbox)
     particles = measure_particles(labels, nm_per_pixel=nm_per_pixel, config=cfg)
+    selected_rod_ids: set[int] | None = None
+    if cfg.max_rods is not None and cfg.max_rods > 0:
+        selected_rod_ids = _select_rod_ids(particles, cfg.max_rods, cfg.sample_seed)
     warnings.extend(_quality_warnings(particles, nm_per_pixel, scale_bar))
+    if selected_rod_ids is not None:
+        total_rods = sum(1 for p in particles if p.particle_class == ParticleClass.ROD)
+        if total_rods > len(selected_rod_ids):
+            warnings.append(
+                f"Subsampled rods for report: {len(selected_rod_ids)} of {total_rods} detected "
+                f"(seed={cfg.sample_seed})."
+            )
 
     result = AnalysisResult(
         image_path=image_path,
@@ -63,6 +100,8 @@ def analyze_image(
         scale_bar_nm=scale_bar.bar_nm if scale_bar else None,
         warnings=warnings,
         show_rejected_on_overlay=cfg.show_rejected_on_overlay,
+        analysis_mode=cfg.analysis_mode,
+        selected_rod_ids=selected_rod_ids,
     )
 
     if save_outputs:
@@ -126,6 +165,7 @@ def _write_csv(result: AnalysisResult) -> None:
             "centroid_y": round(p.centroid_y, 1),
         }
         for p in result.particles
+        if _particle_is_drawn(p, result)
     ]
     df = pd.DataFrame(rows)
     assert result.csv_path is not None
@@ -152,6 +192,8 @@ def _write_overlay(
     show_rejected = result.show_rejected_on_overlay
 
     for region, particle in zip(regionprops(labels), result.particles):
+        if not _particle_is_drawn(particle, result):
+            continue
         if particle.particle_class == ParticleClass.REJECT and not show_rejected:
             continue
 
@@ -200,7 +242,7 @@ def _write_overlay(
             alpha=0.85 if is_reject else 1.0,
         )
 
-    rod_stats = summarize_by_class(result.particles, ParticleClass.ROD)
+    rod_stats = summarize_by_class(result.reported_rods, ParticleClass.ROD)
     dot_stats = summarize_by_class(result.particles, ParticleClass.DOT)
     reject_count = len(result.rejected)
     calib = f"{result.nm_per_pixel:.3f} nm/px"
@@ -210,11 +252,13 @@ def _write_overlay(
             f"= {result.nm_per_pixel:.3f} nm/px"
         )
     title = (
-        f"{result.image_path.name} | {calib} | "
+        f"{result.image_path.name} | mode={result.analysis_mode.value} | {calib} | "
         f"rods: {rod_stats['count']} | dots: {dot_stats['count']} | "
         f"rejected: {reject_count} | "
         f"green=rod blue=dot orange=reject"
     )
+    if result.selected_rod_ids is not None and len(result.selected_rod_ids) < len(result.rods):
+        title += f" | reported rods: {len(result.selected_rod_ids)}"
     ax.set_title(title, fontsize=11)
 
     if scale_bar is not None:
@@ -278,11 +322,15 @@ def _write_segments_debug(
 
 def print_summary(result: AnalysisResult) -> None:
     """Print human-readable summary for CLI."""
-    rod_stats = summarize_by_class(result.particles, ParticleClass.ROD)
+    rod_stats = summarize_by_class(result.reported_rods, ParticleClass.ROD)
     dot_stats = summarize_by_class(result.particles, ParticleClass.DOT)
     reject_count = len(result.rejected)
+    total_rods = len(result.rods)
 
     print(f"\nImage: {result.image_path}")
+    print(f"Analysis mode: {result.analysis_mode.value}")
+    if result.selected_rod_ids is not None and total_rods > len(result.selected_rod_ids):
+        print(f"Rods detected: {total_rods} (reporting {len(result.selected_rod_ids)} via --max-rods)")
     print(f"Calibration: {result.nm_per_pixel:.4f} nm/pixel")
     if result.scale_bar_pixels and result.scale_bar_nm:
         print(

@@ -35,6 +35,16 @@ pytest
 
 Optional: `pip install -r requirements-optional.txt` (Streamlit, Excel export, OCR).
 
+## Analysis modes
+
+| Mode | CLI | Preset |
+|------|-----|--------|
+| Nanorods only | `--mode rods` | `enright_rods` |
+| Dots only | `--mode dots` | `dots_only` |
+| Both | `--mode both` | `screenshot`, `sparse_cluster` |
+
+Round fragments in a rods-only sample become **rejects**, not dots. Use one repo and switch modes — separate git branches are not needed.
+
 ## Run analysis
 
 ```bash

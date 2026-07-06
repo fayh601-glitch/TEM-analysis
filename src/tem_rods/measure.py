@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 from skimage.measure import regionprops
 
-from tem_rods.classify import classify_shape
+from tem_rods.classify import apply_analysis_mode, classify_shape_raw
 from tem_rods.models import AnalysisConfig, ParticleClass, ParticleMeasurement
 
 
@@ -60,11 +60,12 @@ def measure_particles(
 
         aspect_ratio = length_px / width_px
         eccentricity = float(region.eccentricity)
-        particle_class = classify_shape(
+        particle_class = classify_shape_raw(
             eccentricity=eccentricity,
             aspect_ratio=aspect_ratio,
             config=cfg,
         )
+        # Borderline elongated blobs can be promoted to rods when tuning Enright panels.
         if (
             particle_class == ParticleClass.REJECT
             and cfg.promote_borderline_rejects
@@ -72,6 +73,7 @@ def measure_particles(
             and aspect_ratio >= cfg.borderline_min_aspect_ratio
         ):
             particle_class = ParticleClass.ROD
+        particle_class = apply_analysis_mode(particle_class, cfg.analysis_mode)
 
         area_px = int(region.area)
         cy, cx = region.centroid

@@ -32,6 +32,19 @@ class ThresholdMode(str, Enum):
     AUTO = "auto"
 
 
+class AnalysisMode(str, Enum):
+    """
+    What particle shapes to report for this image.
+
+    Use RODS for nanorod-only samples (Enright S2A); DOTS for spherical QDs;
+    BOTH when the sample may contain either shape.
+    """
+
+    BOTH = "both"
+    RODS = "rods"
+    DOTS = "dots"
+
+
 @dataclass(frozen=True)
 class AnalysisConfig:
     """Tunable parameters for segmentation and rod/dot classification."""
@@ -68,6 +81,9 @@ class AnalysisConfig:
     promote_borderline_rejects: bool = False
     borderline_min_eccentricity: float = 0.78
     borderline_min_aspect_ratio: float = 1.35
+    analysis_mode: AnalysisMode = AnalysisMode.BOTH
+    max_rods: int | None = None
+    sample_seed: int = 42
 
 
 @dataclass
@@ -97,10 +113,20 @@ class AnalysisResult:
     scale_bar_nm: float | None = None
     warnings: list[str] = field(default_factory=list)
     show_rejected_on_overlay: bool = True
+    analysis_mode: AnalysisMode = AnalysisMode.BOTH
+    selected_rod_ids: set[int] | None = None
 
     @property
     def rods(self) -> list[ParticleMeasurement]:
         return [p for p in self.particles if p.particle_class == ParticleClass.ROD]
+
+    @property
+    def reported_rods(self) -> list[ParticleMeasurement]:
+        """Rods included in CSV/overlay after optional --max-rods subsampling."""
+        rods = self.rods
+        if self.selected_rod_ids is None:
+            return rods
+        return [p for p in rods if p.particle_id in self.selected_rod_ids]
 
     @property
     def dots(self) -> list[ParticleMeasurement]:

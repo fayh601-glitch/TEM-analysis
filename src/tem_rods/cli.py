@@ -17,7 +17,7 @@ import typer
 from rich.console import Console
 
 from tem_rods.calibrate import nm_per_pixel_from_scale_bar
-from tem_rods.models import AnalysisConfig
+from tem_rods.models import AnalysisConfig, AnalysisMode
 from tem_rods.pipeline import analyze_image, print_summary
 from tem_rods.presets import PRESETS, get_preset
 from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar
@@ -35,6 +35,17 @@ def main() -> None:
     """CdSe/CdS TEM rod and dot analysis."""
 
 
+def _parse_mode(mode: Optional[str]) -> Optional[AnalysisMode]:
+    if mode is None:
+        return None
+    key = mode.lower().strip()
+    try:
+        return AnalysisMode(key)
+    except ValueError as exc:
+        allowed = ", ".join(m.value for m in AnalysisMode)
+        raise typer.BadParameter(f"Unknown mode {mode!r}. Choose: {allowed}") from exc
+
+
 def _merge_config(
     preset_name: Optional[str],
     *,
@@ -45,11 +56,18 @@ def _merge_config(
     split_touching_particles: bool,
     split_min_area: int,
     hide_rejected: bool,
+    analysis_mode: Optional[AnalysisMode],
+    max_rods: Optional[int],
+    sample_seed: int,
 ) -> AnalysisConfig:
     if preset_name:
         config = get_preset(preset_name).config
         if hide_rejected:
             config = replace(config, show_rejected_on_overlay=False)
+        if analysis_mode is not None:
+            config = replace(config, analysis_mode=analysis_mode)
+        if max_rods is not None:
+            config = replace(config, max_rods=max_rods, sample_seed=sample_seed)
         return config
 
     return replace(
@@ -61,6 +79,9 @@ def _merge_config(
         split_touching_particles=split_touching_particles,
         split_min_area_px=split_min_area,
         show_rejected_on_overlay=not hide_rejected,
+        analysis_mode=analysis_mode or AnalysisMode.BOTH,
+        max_rods=max_rods,
+        sample_seed=sample_seed,
     )
 
 
@@ -92,6 +113,12 @@ def analyze(
         "--preset",
         help=f"Image preset: {', '.join(sorted(PRESETS))}.",
     ),
+    mode: Optional[str] = typer.Option(
+        None,
+        "--mode",
+        "-m",
+        help="Analysis mode: both (default), rods (nanorods only), or dots (spheres only).",
+    ),
     output_dir: Path = typer.Option(Path("outputs"), "--output-dir", "-o"),
     min_area: int = typer.Option(150, help="Minimum particle area in pixels (150 recommended for SI rods)."),
     min_eccentricity_rod: float = typer.Option(0.85, help="Min eccentricity to call a particle a rod."),
@@ -110,10 +137,17 @@ def analyze(
         "--hide-rejected",
         help="Do not draw rejected (orange) particles on the overlay.",
     ),
+    max_rods: Optional[int] = typer.Option(
+        None,
+        "--max-rods",
+        help="Report at most N rods (random subsample; use --sample-seed to reproduce).",
+    ),
+    sample_seed: int = typer.Option(42, "--sample-seed", help="Random seed for --max-rods."),
 ) -> None:
     """Segment particles, classify rods vs dots, and export measurements."""
     preset_obj = get_preset(preset) if preset else None
     scale_bar: ScaleBarDetection | None = None
+    analysis_mode = _parse_mode(mode)
 
     if nm_per_pixel is None:
         if auto_scale_bar:
@@ -143,6 +177,9 @@ def analyze(
         split_touching_particles=not no_split_touching,
         split_min_area=split_min_area,
         hide_rejected=hide_rejected,
+        analysis_mode=analysis_mode,
+        max_rods=max_rods,
+        sample_seed=sample_seed,
     )
 
     result = analyze_image(
