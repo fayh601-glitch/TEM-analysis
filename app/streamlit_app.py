@@ -95,11 +95,13 @@ if st.button("Analyze", type="primary", disabled=uploaded is None):
         )
 
         with st.spinner("Analyzing..."):
+            bar_nm_hint = scale_bar_nm if scale_bar_nm else preset.default_scale_bar_nm
             result = analyze_image(
                 image_path,
                 nm_per_pixel,
                 output_dir=out_dir,
                 config=config,
+                scale_bar_nm_hint=bar_nm_hint,
             )
 
         st.success(f"Found {len(result.rods)} rods, {len(result.dots)} dots, {len(result.rejected)} rejected.")

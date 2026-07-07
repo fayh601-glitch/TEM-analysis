@@ -22,8 +22,40 @@ from tem_rods.io import load_grayscale
 from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_by_class
 from tem_rods.models import AnalysisConfig, AnalysisResult, ParticleClass
 from tem_rods.preprocess import preprocess
-from tem_rods.scale_bar import ScaleBarDetection
+from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar
 from tem_rods.segment import segment_particles_from_config
+
+
+def _resolve_exclude_bbox(
+    image_path: Path,
+    scale_bar: ScaleBarDetection | None,
+    cfg: AnalysisConfig,
+    *,
+    scale_bar_nm_hint: float | None = None,
+) -> tuple[tuple[int, int, int, int] | None, list[str]]:
+    """
+    Return a bbox to mask during segmentation (scale bar + label text).
+
+    Uses the detected scale bar when available; otherwise tries auto-detection
+    when use_scale_bar_bbox_mask is enabled.
+    """
+    notes: list[str] = []
+    if not cfg.use_scale_bar_bbox_mask:
+        return None, notes
+
+    if scale_bar is not None:
+        return scale_bar.bbox, notes
+
+    hint = scale_bar_nm_hint or cfg.expected_scale_bar_nm
+    try:
+        detected = detect_scale_bar(image_path, scale_bar_nm=hint)
+        notes.append("Auto-detected scale bar region for masking (label text excluded).")
+        return detected.bbox, notes
+    except ValueError:
+        notes.append(
+            "Could not auto-detect scale bar bbox; bottom strip mask still applied."
+        )
+        return None, notes
 
 
 def _select_class_ids(
@@ -82,6 +114,7 @@ def analyze_image(
     config: AnalysisConfig | None = None,
     scale_bar: ScaleBarDetection | None = None,
     save_outputs: bool = True,
+    scale_bar_nm_hint: float | None = None,
 ) -> AnalysisResult:
     """
     Full pipeline: load → preprocess → segment → classify → measure → export.
@@ -99,7 +132,13 @@ def analyze_image(
         crop_margins=cfg.crop_margins,
         use_clahe=cfg.use_clahe,
     )
-    exclude_bbox = scale_bar.bbox if scale_bar is not None and cfg.use_scale_bar_bbox_mask else None
+    exclude_bbox, mask_notes = _resolve_exclude_bbox(
+        image_path,
+        scale_bar,
+        cfg,
+        scale_bar_nm_hint=scale_bar_nm_hint,
+    )
+    warnings.extend(mask_notes)
     # Segmentation is the hardest step: find dark blobs and drop scale-bar strip / noise.
     labels = segment_particles_from_config(processed, cfg, exclude_bbox=exclude_bbox)
     particles = measure_particles(labels, nm_per_pixel=nm_per_pixel, config=cfg)
@@ -109,7 +148,7 @@ def analyze_image(
         selected_rod_ids = _select_rod_ids(particles, cfg.max_rods, cfg.sample_seed)
     if cfg.max_dots is not None and cfg.max_dots > 0:
         selected_dot_ids = _select_dot_ids(particles, cfg.max_dots, cfg.sample_seed)
-    warnings.extend(_quality_warnings(particles, nm_per_pixel, scale_bar))
+    warnings.extend(_quality_warnings(particles, nm_per_pixel, scale_bar, cfg))
     if selected_rod_ids is not None:
         total_rods = sum(1 for p in particles if p.particle_class == ParticleClass.ROD)
         if total_rods > len(selected_rod_ids):
@@ -158,6 +197,7 @@ def _quality_warnings(
     particles,
     nm_per_pixel: float,
     scale_bar: ScaleBarDetection | None,
+    cfg: AnalysisConfig,
 ) -> list[str]:
     warnings: list[str] = []
     if scale_bar is not None and scale_bar.confidence < 0.5:
@@ -177,10 +217,18 @@ def _quality_warnings(
 
     rods = [p for p in particles if p.particle_class == ParticleClass.ROD]
     if rods:
-        mean_len = float(np.mean([p.length_nm for p in rods]))
+        lengths = [p.length_nm for p in rods]
+        mean_len = float(np.mean(lengths))
+        median_len = float(np.median(lengths))
         if mean_len < 5 or mean_len > 500:
             warnings.append(
                 f"Rod mean length ({mean_len:.1f} nm) looks unusual for nm/pixel={nm_per_pixel:.3f}."
+            )
+        ratio = cfg.merge_warning_mean_median_ratio
+        if median_len > 0 and mean_len / median_len >= ratio:
+            warnings.append(
+                f"Mean rod length ({mean_len:.0f} nm) is much larger than median ({median_len:.0f} nm) "
+                f"— likely merged clusters or split fragments; interpret counts with caution."
             )
     return warnings
 

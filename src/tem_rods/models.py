@@ -59,9 +59,11 @@ class AnalysisConfig:
     min_solidity: float = 0.48
     min_extent: float = 0.18
     min_local_contrast: float = 0.025
-    mask_bottom_fraction: float = 0.10
-    use_scale_bar_bbox_mask: bool = False
-    morphology_closing_radius: int = 1
+    mask_bottom_fraction: float = 0.12
+    use_scale_bar_bbox_mask: bool = True
+    expected_scale_bar_nm: float | None = None
+    morphology_closing_radius: int = 2
+    fill_holes: bool = True
     watershed_min_distance: int = 10
     use_watershed: bool = False
     split_touching_particles: bool = True
@@ -85,6 +87,7 @@ class AnalysisConfig:
     max_rods: int | None = None
     max_dots: int | None = None
     sample_seed: int = 42
+    merge_warning_mean_median_ratio: float = 2.5
 
 
 @dataclass

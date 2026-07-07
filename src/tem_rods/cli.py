@@ -192,12 +192,17 @@ def analyze(
         sample_seed=sample_seed,
     )
 
+    bar_nm_hint = scale_bar_nm
+    if bar_nm_hint is None and preset_obj is not None:
+        bar_nm_hint = preset_obj.default_scale_bar_nm
+
     result = analyze_image(
         image,
         nm_per_pixel,
         output_dir=output_dir,
         config=config,
         scale_bar=scale_bar,
+        scale_bar_nm_hint=bar_nm_hint,
     )
     print_summary(result)
 

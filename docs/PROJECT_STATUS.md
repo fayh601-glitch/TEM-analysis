@@ -4,7 +4,7 @@
 
 **Goal:** Upload TEM image → classify rods vs dots → report length and width (nm).
 
-## Completed (v0.1 → v0.2)
+## Completed (v0.1 → v0.3)
 
 - [x] Classical CV pipeline (`src/tem_rods/`)
 - [x] CLI: `tem-rods analyze`
@@ -18,6 +18,12 @@
 - [x] **v0.2:** Reject class for ambiguous background blobs
 - [x] **v0.2:** Overlay draws actual contours + aligned ellipse axes
 - [x] **v0.2:** Beginner documentation (`docs/HOW_IT_WORKS.md`, file-level comments)
+- [x] **v0.2:** Analysis modes (rods/dots/both), presets, Streamlit UI, PDF manual
+- [x] **v0.3:** Hole-filling after morphological closing (reduces light-center rod splits)
+- [x] **v0.3:** Auto scale-bar bbox masking + default bottom strip mask (12–15%)
+- [x] **v0.3:** QC warning when mean length ≫ median (merged clusters)
+- [x] **v0.3:** `dense_rods` / `dense_rods_50nm` presets; fixed `sparse_cluster` masking
+- [x] **v0.3:** `scripts/compare_manual_labels.py` for label-vs-pipeline checks
 
 ## Validation (Enright 2018 Figure S2)
 
@@ -33,7 +39,6 @@ Tuned settings: `min_particle_area_px=150`, `use_watershed=False`.
 
 ## Not started
 
-- [ ] Streamlit upload UI
 - [ ] Fiji-quality hand labels
 - [ ] UV–Vis correlation module
 - [ ] ML segmentation

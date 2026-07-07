@@ -10,6 +10,7 @@ Python package — they set up data or run batch analyses.
 | [`build_manual_pdf.py`](build_manual_pdf.py) | Regenerate `docs/TEM-analysis-Manual.pdf` from `docs/MANUAL.md` |
 | [`extract_pdf_images.py`](extract_pdf_images.py) | Pull embedded TEM images out of a supplementary PDF into `data/raw/` |
 | [`prepare_paper_dataset.py`](prepare_paper_dataset.py) | Rebuild curated images, calibration CSV, labels, and validation comparison |
+| [`compare_manual_labels.py`](compare_manual_labels.py) | Compare pipeline counts/lengths to `data/labels/manual_v1.csv` |
 
 ## Typical workflow
 

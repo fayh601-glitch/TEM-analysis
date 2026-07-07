@@ -33,6 +33,7 @@ def segment_particles(
     min_local_contrast: float = 0.04,
     mask_bottom_fraction: float = 0.12,
     morphology_closing_radius: int = 1,
+    fill_holes: bool = True,
     split_touching_particles: bool = True,
     split_min_area_px: int = 500,
     split_max_aspect_ratio: float = 4.5,
@@ -61,6 +62,10 @@ def segment_particles(
     binary = morphology.binary_opening(binary, morphology.disk(1))
     if morphology_closing_radius > 0:
         binary = morphology.binary_closing(binary, morphology.disk(morphology_closing_radius))
+
+    # Light centers inside rods (TEM diffraction contrast) can split one rod into two blobs.
+    if fill_holes:
+        binary = ndi.binary_fill_holes(binary)
 
     # Scale-bar text and the white bar line would otherwise be counted as particles.
     if mask_bottom_fraction > 0:
@@ -119,6 +124,7 @@ def segment_particles_from_config(
         min_local_contrast=config.min_local_contrast,
         mask_bottom_fraction=config.mask_bottom_fraction,
         morphology_closing_radius=config.morphology_closing_radius,
+        fill_holes=config.fill_holes,
         split_touching_particles=config.split_touching_particles,
         split_min_area_px=config.split_min_area_px,
         split_max_aspect_ratio=config.split_max_aspect_ratio,
