@@ -39,6 +39,7 @@ from particle_review import (  # noqa: E402
 from tem_rods.models import AnalysisMode, ParticleClass, ParticleMeasurement  # noqa: E402
 from tem_rods.pipeline import analyze_image  # noqa: E402
 from tem_rods.presets import PRESETS, get_preset  # noqa: E402
+from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar  # noqa: E402
 
 st.set_page_config(
     page_title="TEM Particle Analyzer",
@@ -49,8 +50,8 @@ st.set_page_config(
 
 st.title("TEM Particle Analyzer")
 st.caption(
-    "Upload a TEM image → choose rods or dots → set the scale bar → "
-    "approve or discard outlines → download nm measurements. "
+    "Upload a TEM image → choose rods or dots → enter the scale bar (nm) → "
+    "the app measures the bar in pixels → approve outlines → download results. "
     "Reference: Enright et al. 2018."
 )
 
@@ -66,6 +67,7 @@ def _init_session() -> None:
         "warnings": [],
         "last_clicked_id": None,
         "analysis_done": False,
+        "calibration_note": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -126,7 +128,12 @@ def _ensure_session_dir() -> Path:
     return session_dir
 
 
-def _store_analysis_result(result, stem: str) -> None:
+def _store_analysis_result(
+    result,
+    stem: str,
+    *,
+    calibration_note: str | None = None,
+) -> None:
     st.session_state.particles = _particles_to_dicts(result.particles)
     st.session_state.approved_ids = default_approved_ids(result.particles)
     st.session_state.image = result.image
@@ -136,20 +143,49 @@ def _store_analysis_result(result, stem: str) -> None:
     st.session_state.analysis_done = True
     st.session_state.last_clicked_id = None
     st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
+    st.session_state.calibration_note = calibration_note
     if result.overlay_path and result.overlay_path.exists():
         st.session_state.overlay_bytes = result.overlay_path.read_bytes()
     else:
         st.session_state.overlay_bytes = None
 
 
+def _resolve_calibration(
+    image_path: Path,
+    *,
+    scale_bar_nm: float,
+    manual_scale_bar_px: float | None,
+) -> tuple[float, ScaleBarDetection | None, str]:
+    """
+    Return (nm_per_pixel, scale_bar_detection_or_None, user-facing note).
+
+    Prefers automatic pixel measurement; falls back to manual px override.
+    """
+    if manual_scale_bar_px is not None and manual_scale_bar_px > 0:
+        nm_per_pixel = scale_bar_nm / manual_scale_bar_px
+        note = (
+            f"Manual scale bar: {scale_bar_nm:g} nm / {manual_scale_bar_px:.1f} px "
+            f"= {nm_per_pixel:.4f} nm/px"
+        )
+        return nm_per_pixel, None, note
+
+    detection = detect_scale_bar(image_path, scale_bar_nm=scale_bar_nm)
+    note = (
+        f"Auto-detected {detection.polarity} scale bar: "
+        f"{detection.bar_nm:g} nm / {detection.bar_pixels:.1f} px "
+        f"= {detection.nm_per_pixel:.4f} nm/px"
+    )
+    return detection.nm_per_pixel, detection, note
+
+
 def _run_analysis(
     image_path: Path,
     *,
-    nm_per_pixel: float,
+    scale_bar_nm: float,
     preset_name: str,
     analysis_mode: AnalysisMode,
     show_rejected: bool,
-    scale_bar_nm_hint: float | None,
+    manual_scale_bar_px: float | None = None,
 ) -> None:
     session_dir = _ensure_session_dir()
     out_dir = session_dir / "outputs"
@@ -161,15 +197,21 @@ def _run_analysis(
         show_rejected_on_overlay=show_rejected,
         write_segmentation_debug=True,
     )
-    with st.spinner("Analyzing..."):
+    with st.spinner("Detecting scale bar and analyzing..."):
+        nm_per_pixel, scale_bar, calib_note = _resolve_calibration(
+            image_path,
+            scale_bar_nm=scale_bar_nm,
+            manual_scale_bar_px=manual_scale_bar_px,
+        )
         result = analyze_image(
             image_path,
             nm_per_pixel,
             output_dir=out_dir,
             config=config,
-            scale_bar_nm_hint=scale_bar_nm_hint,
+            scale_bar=scale_bar,
+            scale_bar_nm_hint=scale_bar_nm,
         )
-    _store_analysis_result(result, image_path.stem)
+    _store_analysis_result(result, image_path.stem, calibration_note=calib_note)
 
 
 def _default_preset_for_mode(mode: AnalysisMode) -> str:
@@ -204,29 +246,16 @@ analysis_mode = mode_map[mode_label]
 
 st.subheader("2. Scale bar")
 st.caption(
-    "Enter the printed scale-bar value (e.g. 50 if the image says “50 nm”), "
-    "then the length of that white line in **pixels** (measure in Preview/Fiji or use a known screenshot value)."
+    "Enter only the printed number (e.g. **50** if the image says “50 nm”). "
+    "The app finds the white or black scale-bar line and measures its length in pixels."
 )
-c_nm, c_px, c_cal = st.columns(3)
-with c_nm:
-    scale_bar_nm = st.number_input(
-        "Scale bar length (nm)",
-        min_value=1.0,
-        value=50.0,
-        step=1.0,
-        help="The number printed next to the scale bar on the TEM image.",
-    )
-with c_px:
-    scale_bar_px = st.number_input(
-        "Scale bar length (pixels)",
-        min_value=1.0,
-        value=98.0,
-        step=1.0,
-        help="How many pixels long the white bar is in your uploaded image.",
-    )
-with c_cal:
-    nm_per_pixel = scale_bar_nm / scale_bar_px
-    st.metric("Calibration", f"{nm_per_pixel:.4f} nm/px")
+scale_bar_nm = st.number_input(
+    "Scale bar length (nm)",
+    min_value=1.0,
+    value=50.0,
+    step=1.0,
+    help="The number printed next to the scale bar on the TEM image.",
+)
 
 with st.expander("Advanced settings", expanded=False):
     preset_names = sorted(PRESETS.keys())
@@ -238,21 +267,36 @@ with st.expander("Advanced settings", expanded=False):
         help="Tuned thresholds for dense rods, paper screenshots, dots, etc.",
     )
     show_rejected = st.checkbox("Show rejected particles (orange)", value=True)
+    override_px = st.checkbox(
+        "Manually override scale-bar pixels (only if auto-detect fails)",
+        value=False,
+    )
+    manual_scale_bar_px: float | None = None
+    if override_px:
+        manual_scale_bar_px = st.number_input(
+            "Scale bar length (pixels)",
+            min_value=1.0,
+            value=98.0,
+            step=1.0,
+        )
     st.caption("Green = keep · red = discard · click a numbered marker to toggle.")
 
 st.subheader("3. Image")
 if SAMPLE_50NM.exists() and not st.session_state.analysis_done:
     st.info("Demo image available: dense nanorods with a 50 nm scale bar.")
     if st.button("Analyze demo (50 nm rods)", type="secondary"):
-        _run_analysis(
-            SAMPLE_50NM,
-            nm_per_pixel=scale_bar_nm / scale_bar_px,
-            preset_name="dense_rods_50nm" if "dense_rods_50nm" in PRESETS else preset_name,
-            analysis_mode=analysis_mode,
-            show_rejected=show_rejected,
-            scale_bar_nm_hint=scale_bar_nm,
-        )
-        st.rerun()
+        try:
+            _run_analysis(
+                SAMPLE_50NM,
+                scale_bar_nm=scale_bar_nm,
+                preset_name="dense_rods_50nm" if "dense_rods_50nm" in PRESETS else preset_name,
+                analysis_mode=analysis_mode,
+                show_rejected=show_rejected,
+                manual_scale_bar_px=manual_scale_bar_px,
+            )
+            st.rerun()
+        except ValueError as exc:
+            st.error(f"Scale bar / analysis failed: {exc}")
 
 uploaded = st.file_uploader(
     "Upload TEM image (PNG, JPG, TIF)",
@@ -269,15 +313,22 @@ if analyze_clicked:
     session_dir = _ensure_session_dir()
     image_path = session_dir / uploaded.name
     image_path.write_bytes(uploaded.getvalue())
-    _run_analysis(
-        image_path,
-        nm_per_pixel=nm_per_pixel,
-        preset_name=preset_name,
-        analysis_mode=analysis_mode,
-        show_rejected=show_rejected,
-        scale_bar_nm_hint=scale_bar_nm,
-    )
-    st.rerun()
+    try:
+        _run_analysis(
+            image_path,
+            scale_bar_nm=scale_bar_nm,
+            preset_name=preset_name,
+            analysis_mode=analysis_mode,
+            show_rejected=show_rejected,
+            manual_scale_bar_px=manual_scale_bar_px,
+        )
+        st.rerun()
+    except ValueError as exc:
+        st.error(
+            f"Could not measure the scale bar automatically: {exc}\n\n"
+            "Open **Advanced settings** and enable the pixel override, "
+            "or check that the scale bar is visible near the bottom of the image."
+        )
 
 # --- Review panel ---
 if st.session_state.analysis_done and st.session_state.particles:
@@ -292,6 +343,8 @@ if st.session_state.analysis_done and st.session_state.particles:
         f"({stats['approved_rods']} rods, {stats['approved_dots']} dots) · "
         f"discarded {stats['discarded_count']}"
     )
+    if st.session_state.calibration_note:
+        st.info(st.session_state.calibration_note)
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -318,6 +371,7 @@ if st.session_state.analysis_done and st.session_state.particles:
                 "overlay_bytes",
                 "warnings",
                 "last_clicked_id",
+                "calibration_note",
             ):
                 st.session_state[key] = None if key != "approved_ids" else set()
             st.session_state.analysis_done = False

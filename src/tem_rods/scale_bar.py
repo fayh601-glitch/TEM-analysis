@@ -2,9 +2,10 @@
 Scale Bar Detector — automatically find the scale bar in a TEM image
 =====================================================================
 
-Published TEM figures usually place a dark horizontal scale bar in the bottom-left
-corner. This file finds the thin bar line (not the "200 nm" label text), estimates
-pixel length, and optionally reads the nm value from the label or filename.
+Published TEM figures usually place a dark or bright horizontal scale bar near
+the bottom of the micrograph. This file finds the thin bar line (not the
+"200 nm" label text), estimates pixel length, and optionally reads the nm
+value from the label or filename.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ class ScaleBarDetection:
     nm_per_pixel: float
     bbox: tuple[int, int, int, int]
     confidence: float = 1.0
+    polarity: str = "dark"  # "dark" or "bright"
 
 
 def detect_scale_bar(
@@ -38,15 +40,19 @@ def detect_scale_bar(
     search_bottom_fraction: float = 0.25,
     search_left_fraction: float = 0.55,
     max_dark_value: float | None = None,
+    min_bright_value: float | None = None,
     max_bar_height_px: int = 8,
     min_bar_width_px: int = 18,
     min_bar_aspect: float = 6.0,
     bbox_pad_px: int = 8,
+    prefer: str = "auto",
 ) -> ScaleBarDetection:
     """
     Detect a thin horizontal scale bar in the bottom-left of a TEM micrograph.
 
-    Returns calibrated nm/pixel plus a bounding box for masking during segmentation.
+    Tries both dark bars (classic paper figures) and bright/white bars
+    (phone screenshots / instrument overlays). Pass ``scale_bar_nm`` with the
+    printed label value (e.g. 50) and receive the measured pixel length.
     """
     image_path = Path(image_path)
     im = np.array(Image.open(image_path).convert("L"), dtype=float)
@@ -57,50 +63,39 @@ def detect_scale_bar(
     row_start = int(h * (1.0 - search_bottom_fraction))
     col_end = int(w * search_left_fraction)
     roi = im[row_start:, :col_end]
+
     dark_threshold = max_dark_value if max_dark_value is not None else 0.25
     if max_dark_value is not None and max_dark_value > 1.5:
         dark_threshold = max_dark_value / 255.0
+    bright_threshold = min_bright_value if min_bright_value is not None else 0.85
+    if min_bright_value is not None and min_bright_value > 1.5:
+        bright_threshold = min_bright_value / 255.0
 
-    binary = roi < dark_threshold
-    labels = label(binary)
-    candidates: list[tuple[float, object]] = []
+    search_plan: list[tuple[str, np.ndarray]] = []
+    if prefer in ("auto", "dark"):
+        search_plan.append(("dark", roi < dark_threshold))
+    if prefer in ("auto", "bright"):
+        search_plan.append(("bright", roi > bright_threshold))
+    if prefer == "bright":
+        search_plan = [("bright", roi > bright_threshold), ("dark", roi < dark_threshold)]
 
-    for region in regionprops(labels):
-        min_row, min_col, max_row, max_col = region.bbox
-        height = max_row - min_row
-        width = max_col - min_col
-        if height > max_bar_height_px:
-            continue
-        if width < min_bar_width_px:
-            continue
-        if width / max(height, 1) < min_bar_aspect:
-            continue
-        if width > w * 0.4:
-            continue
-
-        row_scores = []
-        for rel_row in range(min_row, max_row):
-            row = binary[rel_row]
-            dark = np.where(row)[0]
-            if len(dark) < min_bar_width_px:
-                continue
-            breaks = np.where(np.diff(dark) > 2)[0]
-            starts = [0] + (breaks + 1).tolist()
-            ends = breaks.tolist() + [len(dark) - 1]
-            row_scores.append(max(float(dark[end] - dark[start]) for start, end in zip(starts, ends)))
-
-        bar_width = float(np.median(row_scores)) if row_scores else float(width)
-        if bar_width < min_bar_width_px:
-            continue
-
-        abs_row = row_start + (min_row + max_row) / 2.0
-        score = bar_width + 0.25 * abs_row + 0.02 * (width / max(height, 1))
-        candidates.append((score, region, bar_width))
+    candidates: list[tuple[float, object, float, str]] = []
+    for polarity, binary in search_plan:
+        for score, region, bar_width in _horizontal_bar_candidates(
+            binary,
+            row_start=row_start,
+            image_width=w,
+            max_bar_height_px=max_bar_height_px,
+            min_bar_width_px=min_bar_width_px,
+            min_bar_aspect=min_bar_aspect,
+        ):
+            # Prefer longer, thinner bars slightly in the lower part of the ROI.
+            candidates.append((score, region, bar_width, polarity))
 
     if not candidates:
         raise ValueError(f"Could not detect scale bar in {image_path}")
 
-    _, best_region, bar_pixels = max(candidates, key=lambda item: item[0])
+    _, best_region, bar_pixels, polarity = max(candidates, key=lambda item: item[0])
     min_row, min_col, max_row, max_col = best_region.bbox
     bbox = (
         max(0, row_start + min_row - bbox_pad_px),
@@ -129,7 +124,55 @@ def detect_scale_bar(
         nm_per_pixel=nm_per_pixel,
         bbox=bbox,
         confidence=confidence,
+        polarity=polarity,
     )
+
+
+def _horizontal_bar_candidates(
+    binary: np.ndarray,
+    *,
+    row_start: int,
+    image_width: int,
+    max_bar_height_px: int,
+    min_bar_width_px: int,
+    min_bar_aspect: float,
+) -> list[tuple[float, object, float]]:
+    labels = label(binary)
+    candidates: list[tuple[float, object, float]] = []
+
+    for region in regionprops(labels):
+        min_row, min_col, max_row, max_col = region.bbox
+        height = max_row - min_row
+        width = max_col - min_col
+        if height > max_bar_height_px:
+            continue
+        if width < min_bar_width_px:
+            continue
+        if width / max(height, 1) < min_bar_aspect:
+            continue
+        if width > image_width * 0.4:
+            continue
+
+        row_scores = []
+        for rel_row in range(min_row, max_row):
+            row = binary[rel_row]
+            dark = np.where(row)[0]
+            if len(dark) < min_bar_width_px:
+                continue
+            breaks = np.where(np.diff(dark) > 2)[0]
+            starts = [0] + (breaks + 1).tolist()
+            ends = breaks.tolist() + [len(dark) - 1]
+            row_scores.append(max(float(dark[end] - dark[start]) for start, end in zip(starts, ends)))
+
+        bar_width = float(np.median(row_scores)) if row_scores else float(width)
+        if bar_width < min_bar_width_px:
+            continue
+
+        abs_row = row_start + (min_row + max_row) / 2.0
+        score = bar_width + 0.25 * abs_row + 0.02 * (width / max(height, 1))
+        candidates.append((score, region, bar_width))
+
+    return candidates
 
 
 def detect_scale_bar_pixels(
