@@ -1,0 +1,6 @@
+# Streamlit Community Cloud / public web app dependencies
+# Used by: share.streamlit.io pointing at app/streamlit_app.py
+
+-r requirements.txt
+streamlit==1.39.0
+plotly==5.24.1

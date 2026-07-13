@@ -28,6 +28,21 @@ streamlit run app/streamlit_app.py
 
 After Analyze, click numbered markers on the overlay to **keep (green)** or **discard (red)** particles, then download the approved CSV.
 
+On the website home screen you **pick Rods or Dots** and enter the **scale bar (nm + pixels)** before uploading.
+
+## Public website + QR code
+
+To host a shareable link (and QR) anyone can open on a phone:
+
+1. Deploy on Streamlit Community Cloud — see **[docs/DEPLOY_WEBSITE.md](docs/DEPLOY_WEBSITE.md)**
+2. Generate a QR for your public URL:
+   ```bash
+   pip install 'qrcode[pil]'
+   python scripts/make_app_qr.py "https://YOUR-APP.streamlit.app"
+   ```
+
+Repo: https://github.com/fayh601-glitch/TEM-analysis
+
 ## Quick start (Terminal)
 
 ```bash

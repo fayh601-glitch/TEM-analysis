@@ -11,6 +11,7 @@ Python package — they set up data or run batch analyses.
 | [`extract_pdf_images.py`](extract_pdf_images.py) | Pull embedded TEM images out of a supplementary PDF into `data/raw/` |
 | [`prepare_paper_dataset.py`](prepare_paper_dataset.py) | Rebuild curated images, calibration CSV, semi-auto labels, validation comparison |
 | [`compare_manual_labels.py`](compare_manual_labels.py) | Compare pipeline counts/lengths/widths to label CSV (default: `manual_v1.csv`) |
+| [`make_app_qr.py`](make_app_qr.py) | Make a QR code PNG for the public Streamlit website URL |
 
 ## Related docs
 

@@ -1,15 +1,15 @@
 """
-TEM Rod Analyzer — Web upload interface with human review
-=========================================================
+TEM Particle Analyzer — public web UI with human review
+=======================================================
 
-Run from the project root::
+Run locally::
 
-    source .venv/bin/activate
-    pip install -r requirements-optional.txt
     streamlit run app/streamlit_app.py
 
-After analysis, click particle markers on the overlay to keep (green) or
-discard (red) measurements before downloading the final CSV.
+Or deploy on Streamlit Community Cloud (see docs/DEPLOY_WEBSITE.md).
+
+After analysis, click particle markers to keep (green) or discard (red)
+before downloading the final CSV.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Allow `streamlit run app/streamlit_app.py` from the repo root.
 _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
@@ -41,12 +40,18 @@ from tem_rods.models import AnalysisMode, ParticleClass, ParticleMeasurement  # 
 from tem_rods.pipeline import analyze_image  # noqa: E402
 from tem_rods.presets import PRESETS, get_preset  # noqa: E402
 
-st.set_page_config(page_title="TEM Rod Analyzer", page_icon="🔬", layout="wide")
+st.set_page_config(
+    page_title="TEM Particle Analyzer",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-st.title("CdSe/CdS TEM Nanorod Analyzer")
+st.title("TEM Particle Analyzer")
 st.caption(
-    "Upload a TEM image, calibrate the scale bar, then approve or discard each outline "
-    "before exporting. Reference: Enright et al. 2018."
+    "Upload a TEM image → choose rods or dots → set the scale bar → "
+    "approve or discard outlines → download nm measurements. "
+    "Reference: Enright et al. 2018."
 )
 
 
@@ -167,77 +172,97 @@ def _run_analysis(
     _store_analysis_result(result, image_path.stem)
 
 
+def _default_preset_for_mode(mode: AnalysisMode) -> str:
+    if mode == AnalysisMode.DOTS:
+        return "dots_only"
+    if mode == AnalysisMode.BOTH:
+        return "screenshot"
+    if "dense_rods_50nm" in PRESETS:
+        return "dense_rods_50nm"
+    return "enright_rods"
+
+
 _init_session()
 
 SAMPLE_50NM = _REPO / "data" / "curated" / "user_rods_50nm_jul13.png"
 
-with st.sidebar:
-    st.header("Settings")
-    mode_label = st.radio(
-        "Particle type in this image",
-        options=["Nanorods only", "Round dots only", "Both rods and dots"],
-        index=0,
-    )
-    mode_map = {
-        "Nanorods only": AnalysisMode.RODS,
-        "Round dots only": AnalysisMode.DOTS,
-        "Both rods and dots": AnalysisMode.BOTH,
-    }
-    analysis_mode = mode_map[mode_label]
+# --- Primary controls (always visible before analyze) ---
+st.subheader("1. What are you measuring?")
+mode_label = st.radio(
+    "Particle type",
+    options=["Rods", "Dots", "Both"],
+    index=0,
+    horizontal=True,
+    help="Rods-only ignores round fragments. Dots-only ignores elongated shapes.",
+)
+mode_map = {
+    "Rods": AnalysisMode.RODS,
+    "Dots": AnalysisMode.DOTS,
+    "Both": AnalysisMode.BOTH,
+}
+analysis_mode = mode_map[mode_label]
 
-    preset_names = sorted(PRESETS.keys())
-    default_preset = "enright_rods" if analysis_mode == AnalysisMode.RODS else "dots_only"
-    if analysis_mode == AnalysisMode.BOTH:
-        default_preset = "screenshot"
-    # Prefer dense preset when analyzing the sample rods image.
-    if "dense_rods_50nm" in preset_names and default_preset == "enright_rods":
-        default_preset = "dense_rods_50nm"
-    preset_name = st.selectbox(
-        "Image preset",
-        preset_names,
-        index=preset_names.index(default_preset) if default_preset in preset_names else 0,
+st.subheader("2. Scale bar")
+st.caption(
+    "Enter the printed scale-bar value (e.g. 50 if the image says “50 nm”), "
+    "then the length of that white line in **pixels** (measure in Preview/Fiji or use a known screenshot value)."
+)
+c_nm, c_px, c_cal = st.columns(3)
+with c_nm:
+    scale_bar_nm = st.number_input(
+        "Scale bar length (nm)",
+        min_value=1.0,
+        value=50.0,
+        step=1.0,
+        help="The number printed next to the scale bar on the TEM image.",
     )
-
-    scale_bar_nm = st.number_input("Scale bar (nm)", min_value=1.0, value=50.0, step=1.0)
+with c_px:
     scale_bar_px = st.number_input(
         "Scale bar length (pixels)",
         min_value=1.0,
         value=98.0,
         step=1.0,
-        help="For the jul13 50 nm screenshot the white bar is ~98 px.",
+        help="How many pixels long the white bar is in your uploaded image.",
+    )
+with c_cal:
+    nm_per_pixel = scale_bar_nm / scale_bar_px
+    st.metric("Calibration", f"{nm_per_pixel:.4f} nm/px")
+
+with st.expander("Advanced settings", expanded=False):
+    preset_names = sorted(PRESETS.keys())
+    default_preset = _default_preset_for_mode(analysis_mode)
+    preset_name = st.selectbox(
+        "Image preset",
+        preset_names,
+        index=preset_names.index(default_preset) if default_preset in preset_names else 0,
+        help="Tuned thresholds for dense rods, paper screenshots, dots, etc.",
     )
     show_rejected = st.checkbox("Show rejected particles (orange)", value=True)
-    st.markdown("---")
-    st.caption(
-        "**Review:** green = keep · red = discard · "
-        "click a numbered marker on the overlay to toggle."
-    )
+    st.caption("Green = keep · red = discard · click a numbered marker to toggle.")
 
+st.subheader("3. Image")
 if SAMPLE_50NM.exists() and not st.session_state.analysis_done:
-    st.info(
-        "Your 50 nm nanorod image is ready. Click the button below to analyze it, "
-        "then approve/discard outlines on the interactive plot."
-    )
-    if st.button("Analyze my 50 nm rods image", type="primary"):
+    st.info("Demo image available: dense nanorods with a 50 nm scale bar.")
+    if st.button("Analyze demo (50 nm rods)", type="secondary"):
         _run_analysis(
             SAMPLE_50NM,
             nm_per_pixel=scale_bar_nm / scale_bar_px,
             preset_name="dense_rods_50nm" if "dense_rods_50nm" in PRESETS else preset_name,
-            analysis_mode=AnalysisMode.RODS,
+            analysis_mode=analysis_mode,
             show_rejected=show_rejected,
-            scale_bar_nm_hint=50.0,
+            scale_bar_nm_hint=scale_bar_nm,
         )
         st.rerun()
 
 uploaded = st.file_uploader(
-    "Or upload a different TEM image",
+    "Upload TEM image (PNG, JPG, TIF)",
     type=["png", "jpg", "jpeg", "tif", "tiff"],
 )
 
 if uploaded is not None and not st.session_state.analysis_done:
-    st.image(uploaded, caption="Uploaded image", use_container_width=True)
+    st.image(uploaded, caption="Uploaded image", use_column_width="always")
 
-analyze_clicked = st.button("Analyze upload", disabled=uploaded is None)
+analyze_clicked = st.button("Analyze image", type="primary", disabled=uploaded is None)
 
 if analyze_clicked:
     assert uploaded is not None
@@ -246,7 +271,7 @@ if analyze_clicked:
     image_path.write_bytes(uploaded.getvalue())
     _run_analysis(
         image_path,
-        nm_per_pixel=scale_bar_nm / scale_bar_px,
+        nm_per_pixel=nm_per_pixel,
         preset_name=preset_name,
         analysis_mode=analysis_mode,
         show_rejected=show_rejected,
@@ -254,7 +279,10 @@ if analyze_clicked:
     )
     st.rerun()
 
+# --- Review panel ---
 if st.session_state.analysis_done and st.session_state.particles:
+    st.markdown("---")
+    st.subheader("4. Review detections")
     particles = _dicts_to_particles(st.session_state.particles)
     approved_ids: set[int] = set(st.session_state.approved_ids)
     stats = summarize_approved(particles, approved_ids)
@@ -281,7 +309,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             )
             st.rerun()
     with c4:
-        if st.button("Clear analysis / start over"):
+        if st.button("Clear / start over"):
             for key in (
                 "particles",
                 "approved_ids",
@@ -295,12 +323,19 @@ if st.session_state.analysis_done and st.session_state.particles:
             st.session_state.analysis_done = False
             st.rerun()
 
-    if "mean_rod_length_nm" in stats:
-        st.metric(
-            "Mean approved rod length (nm)",
-            f"{stats['mean_rod_length_nm']:.1f}",
-            help=f"Mean width {stats.get('mean_rod_width_nm', '—')} nm",
-        )
+    m1, m2 = st.columns(2)
+    with m1:
+        if "mean_rod_length_nm" in stats:
+            st.metric(
+                "Mean approved rod length (nm)",
+                f"{stats['mean_rod_length_nm']:.1f}",
+            )
+    with m2:
+        if "mean_dot_length_nm" in stats:
+            st.metric(
+                "Mean approved dot size (nm)",
+                f"{stats['mean_dot_length_nm']:.1f}",
+            )
 
     fig = build_review_figure(
         st.session_state.image,
@@ -324,7 +359,7 @@ if st.session_state.analysis_done and st.session_state.particles:
         st.rerun()
 
     st.subheader("Particle list")
-    st.caption("Uncheck **approved** to discard, or use the plot markers above.")
+    st.caption("Uncheck **approved** to discard, or click markers on the plot.")
     table = pd.DataFrame(particles_to_rows(particles, approved_ids))
     edited = st.data_editor(
         table,
@@ -342,25 +377,29 @@ if st.session_state.analysis_done and st.session_state.particles:
         st.rerun()
 
     csv_bytes = approved_csv_bytes(particles, set(st.session_state.approved_ids))
-    st.download_button(
-        "Download approved measurements CSV",
-        data=csv_bytes,
-        file_name=f"{st.session_state.stem}_approved_measurements.csv",
-        mime="text/csv",
-    )
-    if st.session_state.overlay_bytes:
+    d1, d2 = st.columns(2)
+    with d1:
         st.download_button(
-            "Download original overlay PNG",
-            data=st.session_state.overlay_bytes,
-            file_name=f"{st.session_state.stem}_overlay.png",
-            mime="image/png",
+            "Download approved measurements CSV",
+            data=csv_bytes,
+            file_name=f"{st.session_state.stem}_approved_measurements.csv",
+            mime="text/csv",
         )
+    with d2:
+        if st.session_state.overlay_bytes:
+            st.download_button(
+                "Download original overlay PNG",
+                data=st.session_state.overlay_bytes,
+                file_name=f"{st.session_state.stem}_overlay.png",
+                mime="image/png",
+            )
 
     for warning in st.session_state.warnings or []:
         st.warning(warning)
 
 st.markdown("---")
 st.markdown(
-    "**Legend:** green marker = keep · red marker = discard · orange = pipeline reject  \n"
-    "**Docs:** see `docs/GETTING_STARTED.md` and `docs/TEM-analysis-Manual.pdf`"
+    "**Legend:** green marker = keep · red = discard · orange = pipeline reject  \n"
+    "Repo: [github.com/fayh601-glitch/TEM-analysis](https://github.com/fayh601-glitch/TEM-analysis) · "
+    "Deploy guide: `docs/DEPLOY_WEBSITE.md`"
 )
