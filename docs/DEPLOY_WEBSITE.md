@@ -1,49 +1,57 @@
 # Deploy this app as a public website
 ====================================
 
-The TEM Particle Analyzer is a Streamlit app (`app/streamlit_app.py`).
-Anyone with the public URL (or a QR code pointing at it) can:
+## Critical: Python version (read this)
 
-1. Choose **Rods** or **Dots**
-2. Enter the **scale bar length in nm** (pixels are measured automatically)
-3. Upload a TEM image
-4. Approve/discard outlines and download a CSV
+Streamlit Community Cloud **ignores** `runtime.txt`. Your last log showed:
 
-## Your Cloud deploy
+```text
+Using Python 3.14.6 environment
+```
 
-After fixing deps, reopen or reboot the app at Streamlit Cloud. Expected URL:
+That is why installs hang or fail. You must pick the Python version in the
+**Streamlit website UI**, not in GitHub files.
+
+### Fix (delete + redeploy)
+
+1. Go to https://share.streamlit.io
+2. Open your app → **⋮** → **Delete**
+3. Click **Create app** / **New app**
+4. Fill in:
+   - Repository: `fayh601-glitch/TEM-analysis`
+   - Branch: `main`
+   - Main file: `app/streamlit_app.py`
+5. Open **Advanced settings**
+6. Set **Python version** to **3.11** or **3.12** (not 3.13 / 3.14)
+7. Deploy and wait (first install of scipy/skimage can take 5–15 minutes)
+
+After it works, your public URL will be something like:
 
 ```text
 https://tem-analysis-y7v8uc3xf2fxfayixohzen.streamlit.app/
 ```
 
-(Or whatever subdomain your Streamlit dashboard shows.)
+### Check logs while it cooks
 
-## Recommended settings (Streamlit Community Cloud)
+**Manage app → Logs**
 
-1. Open https://share.streamlit.io and sign in with GitHub.
-2. App settings:
-   - **Repository:** `fayh601-glitch/TEM-analysis`
-   - **Branch:** `main`
-   - **Main file path:** `app/streamlit_app.py`
-3. Ensure `runtime.txt` exists in the repo (`python-3.11`) — Cloud must not use Python 3.14.
-4. Click **Reboot app** / **Redeploy** after pulling the latest `main`.
+You want to see:
 
-### Why the first deploy failed
-
-Cloud defaulted to **Python 3.14**, and pinned packages like `numpy==1.26.4` /
-`Pillow==10.4.0` / `scipy==1.11.4` have no wheels there, so installs tried to
-compile from source and crashed. The repo now pins **Python 3.11** and uses
-version ranges with binary wheels.
-
-### Make a QR code
-
-```bash
-pip install 'qrcode[pil]'
-python scripts/make_app_qr.py "https://tem-analysis-y7v8uc3xf2fxfayixohzen.streamlit.app"
+```text
+Using Python 3.11...   (or 3.12)
 ```
 
-## Local testing
+If it still says `Python 3.14`, delete again and make sure Advanced settings
+were set **before** clicking Deploy.
+
+## What the app needs from users
+
+1. Choose **Rods** or **Dots**
+2. Enter scale bar **nm** (pixels are auto-measured)
+3. Upload TEM image
+4. Approve/discard outlines → download CSV
+
+## Local test
 
 ```bash
 cd TEM-analysis
@@ -51,8 +59,6 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt && pip install -e .
 streamlit run app/streamlit_app.py
 ```
-
-Open http://localhost:8501
 
 ## GitHub
 

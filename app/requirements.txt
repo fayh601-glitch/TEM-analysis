@@ -1,0 +1,11 @@
+# Same as repo root — Cloud prefers deps next to the entrypoint file.
+streamlit>=1.39
+plotly>=5.24
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+matplotlib>=3.8
+Pillow>=10.4
+scikit-image>=0.22
+typer>=0.12
+rich>=13.9

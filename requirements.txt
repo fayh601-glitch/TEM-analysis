@@ -1,23 +1,13 @@
-# =============================================================================
-# TEM-analysis — Streamlit Cloud + general install deps
-# Cloud uses this file automatically. Pin Python via runtime.txt (3.11).
-# For exact local Mac pins, see requirements-pinned.txt
-# =============================================================================
+# Streamlit Community Cloud deps (entrypoint also checks app/)
+# Prefer Python 3.11 or 3.12 in Advanced settings (runtime.txt is ignored by Cloud).
 
-# Web UI
-streamlit>=1.39,<1.42
-plotly>=5.24,<6
-
-# Core scientific stack (wheels available on Python 3.11)
-numpy>=1.26,<2.1
-scipy>=1.11,<1.15
-pandas>=2.1,<2.3
-matplotlib>=3.8,<3.10
-
-# Image processing
-Pillow>=10.4,<12
-scikit-image>=0.22,<0.25
-
-# CLI helpers (imported by package)
+streamlit>=1.39
+plotly>=5.24
+numpy>=1.26
+scipy>=1.11
+pandas>=2.1
+matplotlib>=3.8
+Pillow>=10.4
+scikit-image>=0.22
 typer>=0.12
 rich>=13.9
