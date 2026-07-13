@@ -10,8 +10,10 @@ program reads when you run `tem-rods analyze`.
 | `curated/` | Cropped TEM panels ready for analysis (Figure S2 from Enright 2018). |
 | `calibration.csv` | Scale bar values and paper reference dimensions per image. |
 | `calibration.example.csv` | Template for new images. |
-| `labels/manual_v1.csv` | Semi-automatic rod labels from tuned pipeline (replace with Fiji hand labels over time). |
-| `labels/manual_v1.example.csv` | Template for manual labeling. |
+| `labels/manual_v1.csv` | Semi-automated pipeline output (`notes=semi_auto_tuned_pipeline`). **Not** hand labels — see [labels/README.md](labels/README.md). |
+| `labels/manual_v1.example.csv` | Legacy column template |
+| `labels/manual_v2.template.csv` | Template for Fiji hand measurements |
+| `labels/README.md` | What each label file is and validation status |
 
 ## Curated panels (Enright 2018 SI Figure S2)
 

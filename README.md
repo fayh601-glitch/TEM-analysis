@@ -26,6 +26,8 @@ pip install -r requirements-optional.txt
 streamlit run app/streamlit_app.py
 ```
 
+After Analyze, click numbered markers on the overlay to **keep (green)** or **discard (red)** particles, then download the approved CSV.
+
 ## Quick start (Terminal)
 
 ```bash
@@ -81,6 +83,25 @@ TEM-analysis/
 | [How it works](docs/HOW_IT_WORKS.md) | Pipeline in plain English |
 | [Source guide](src/tem_rods/README.md) | Which file does what |
 | [Development](docs/DEVELOPMENT.md) | Tuning and contributing |
+| [Labeling guide](docs/LABELING_GUIDE.md) | Fiji hand measurements for validation |
+| [AI workflow](docs/AI_WORKFLOW.md) | Prompting AI for validation sprints |
+
+## Validation status
+
+Pipeline output is compared to **published mean dimensions** from Enright et al.
+2018 (see `outputs/validation/paper_comparison.csv`). This is **not** the same
+as rigorous per-rod validation.
+
+| Panel | Length error | Width error | Status |
+|-------|-------------|-------------|--------|
+| S2A starting rods | ~3% | ~62% | Length OK; width overestimated |
+| S2B 30 min | ~49% | ~132% | Fails — merged/over-segmented rods |
+| S2D 65 min | ~47% | ~15% | Fails — under-counts long rods |
+
+`data/labels/manual_v1.csv` is **semi-automated pipeline output**
+(`semi_auto_tuned_pipeline` in the `notes` column), not independent hand labels.
+See [data/labels/README.md](data/labels/README.md) and
+[docs/LABELING_GUIDE.md](docs/LABELING_GUIDE.md) for creating real Fiji labels.
 
 ## License
 

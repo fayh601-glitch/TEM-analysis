@@ -36,11 +36,23 @@ def _segment_kw(**overrides):
     return base
 
 
-def test_fill_holes_reduces_split_rod_labels():
-    processed = preprocess(_hollow_rod_image(), gaussian_sigma=0.5)
-    without = segment_particles(processed, fill_holes=False, **_segment_kw())
-    with_fill = segment_particles(processed, fill_holes=True, **_segment_kw())
-    assert with_fill.max() < without.max()
+def test_fill_holes_fills_hollow_rod_interior():
+    """Hole-filling solidifies a connected ring; it does not merge two separate blobs."""
+    from skimage.measure import regionprops
+
+    image = np.ones((120, 220), dtype=np.float64) * 0.9
+    rr, cc = ellipse(60, 110, 10, 35, rotation=0)
+    image[rr, cc] = 0.08
+    rr2, cc2 = ellipse(60, 110, 7, 18, rotation=0)
+    image[rr2, cc2] = 0.88
+    processed = preprocess(image, gaussian_sigma=0.0)
+    kw = _segment_kw(morphology_closing_radius=2, min_particle_area_px=20)
+    without = segment_particles(processed, fill_holes=False, **kw)
+    with_fill = segment_particles(processed, fill_holes=True, **kw)
+    area_without = sum(p.area for p in regionprops(without))
+    area_with = sum(p.area for p in regionprops(with_fill))
+    assert area_with > area_without
+    assert with_fill.max() <= without.max()
 
 
 def test_merge_warning_when_mean_exceeds_median():
@@ -71,3 +83,9 @@ def test_dense_rods_preset_registered():
     preset = get_preset("dense_rods_50nm")
     assert preset.config.fill_holes is True
     assert preset.config.mask_bottom_fraction >= 0.12
+
+
+def test_dense_rods_alias_shares_config():
+    from tem_rods.presets import get_preset
+
+    assert get_preset("dense_rods").config is get_preset("dense_rods_50nm").config

@@ -27,18 +27,26 @@
 
 ## Validation (Enright 2018 Figure S2)
 
-Re-run after changes: `bash scripts/run_demo.sh`
+Re-run after changes: `bash scripts/run_demo.sh` or
+`python scripts/prepare_paper_dataset.py`
 
-| Panel | Paper L (nm) | Pipeline L (nm) | Notes |
-|---|---|---|---|
-| S2A starting rods | 27.6 | ~28 | ✓ ~3% error (re-run demo for latest) |
-| S2B 30 min | 44.4 | 66.1 | Over-segmentation / merged rods |
-| S2D 65 min | 99.3 | 52.9 | Under-counts long rods |
+| Panel | Paper L (nm) | Pipeline L (nm) | Length err | Width err | Notes |
+|---|---|---|---|---|---|
+| S2A starting rods | 27.6 | ~28 | ~3% | ~62% | Length OK |
+| S2B 30 min | 44.4 | 66.1 | ~49% | ~132% | Over-segmentation / merged rods |
+| S2D 65 min | 99.3 | 52.9 | ~47% | ~15% | Under-counts long rods |
+
+See `outputs/validation/paper_comparison.csv` for latest numbers (includes
+`width_error_pct`).
 
 Tuned settings: `min_particle_area_px=150`, `use_watershed=False`.
 
+**Label files:** `data/labels/manual_v1.csv` is semi-automated pipeline output
+(`notes=semi_auto_tuned_pipeline`), not Fiji hand labels. Real validation requires
+`manual_v2.csv` per [docs/LABELING_GUIDE.md](LABELING_GUIDE.md).
+
 ## Not started
 
-- [ ] Fiji-quality hand labels
+- [ ] Fiji hand labels (`manual_v2.csv`, 30–50 rods per panel)
 - [ ] UV–Vis correlation module
 - [ ] ML segmentation

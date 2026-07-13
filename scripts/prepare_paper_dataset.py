@@ -113,7 +113,12 @@ def main() -> None:
                 "paper_width_nm": panel["paper_width_nm"],
                 "pipeline_length_nm": round(mean_l, 1),
                 "pipeline_width_nm": round(mean_w, 1),
-                "length_error_pct": round(100 * (mean_l - panel["paper_length_nm"]) / panel["paper_length_nm"], 1),
+                "length_error_pct": round(
+                    100 * (mean_l - panel["paper_length_nm"]) / panel["paper_length_nm"], 1
+                ),
+                "width_error_pct": round(
+                    100 * (mean_w - panel["paper_width_nm"]) / panel["paper_width_nm"], 1
+                ),
                 "n_rods": len(rods),
             }
         )

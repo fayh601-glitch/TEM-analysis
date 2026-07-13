@@ -104,51 +104,38 @@ PRESETS: dict[str, ImagePreset] = {
             analysis_mode=AnalysisMode.RODS,
         ),
     ),
-    "dense_rods_50nm": ImagePreset(
-        name="dense_rods_50nm",
-        description="Dense nanorod fields (~50 nm scale bar); reduces light-center rod splitting.",
-        default_scale_bar_nm=50.0,
-        config=AnalysisConfig(
-            min_particle_area_px=120,
-            min_eccentricity_rod=0.78,
-            min_aspect_ratio_rod=1.35,
-            split_touching_particles=True,
-            split_min_area_px=350,
-            mask_bottom_fraction=0.15,
-            use_scale_bar_bbox_mask=True,
-            expected_scale_bar_nm=50.0,
-            fill_holes=True,
-            morphology_closing_radius=2,
-            threshold_mode=ThresholdMode.LOCAL,
-            local_threshold_block_size=41,
-            gaussian_sigma=1.2,
-            min_local_contrast=0.015,
-            analysis_mode=AnalysisMode.RODS,
-        ),
-    ),
-    "dense_rods": ImagePreset(
-        name="dense_rods",
-        description="Alias for dense_rods_50nm (dense fields, hole-filling enabled).",
-        default_scale_bar_nm=50.0,
-        config=AnalysisConfig(
-            min_particle_area_px=120,
-            min_eccentricity_rod=0.78,
-            min_aspect_ratio_rod=1.35,
-            split_touching_particles=True,
-            split_min_area_px=350,
-            mask_bottom_fraction=0.15,
-            use_scale_bar_bbox_mask=True,
-            expected_scale_bar_nm=50.0,
-            fill_holes=True,
-            morphology_closing_radius=2,
-            threshold_mode=ThresholdMode.LOCAL,
-            local_threshold_block_size=41,
-            gaussian_sigma=1.2,
-            min_local_contrast=0.015,
-            analysis_mode=AnalysisMode.RODS,
-        ),
-    ),
 }
+
+_DENSE_RODS_50NM_CONFIG = AnalysisConfig(
+    min_particle_area_px=120,
+    min_eccentricity_rod=0.78,
+    min_aspect_ratio_rod=1.35,
+    split_touching_particles=True,
+    split_min_area_px=350,
+    mask_bottom_fraction=0.15,
+    use_scale_bar_bbox_mask=True,
+    expected_scale_bar_nm=50.0,
+    fill_holes=True,
+    morphology_closing_radius=2,
+    threshold_mode=ThresholdMode.LOCAL,
+    local_threshold_block_size=41,
+    gaussian_sigma=1.2,
+    min_local_contrast=0.015,
+    analysis_mode=AnalysisMode.RODS,
+)
+
+PRESETS["dense_rods_50nm"] = ImagePreset(
+    name="dense_rods_50nm",
+    description="Dense nanorod fields (~50 nm scale bar); reduces light-center rod splitting.",
+    default_scale_bar_nm=50.0,
+    config=_DENSE_RODS_50NM_CONFIG,
+)
+PRESETS["dense_rods"] = ImagePreset(
+    name="dense_rods",
+    description="Alias for dense_rods_50nm (dense fields, hole-filling enabled).",
+    default_scale_bar_nm=50.0,
+    config=_DENSE_RODS_50NM_CONFIG,
+)
 
 
 def get_preset(name: str) -> ImagePreset:

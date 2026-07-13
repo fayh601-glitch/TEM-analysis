@@ -9,8 +9,16 @@ Python package — they set up data or run batch analyses.
 | [`run_demo.sh`](run_demo.sh) | Analyze all three curated paper images and save results to `outputs/demo/` |
 | [`build_manual_pdf.py`](build_manual_pdf.py) | Regenerate `docs/TEM-analysis-Manual.pdf` from `docs/MANUAL.md` |
 | [`extract_pdf_images.py`](extract_pdf_images.py) | Pull embedded TEM images out of a supplementary PDF into `data/raw/` |
-| [`prepare_paper_dataset.py`](prepare_paper_dataset.py) | Rebuild curated images, calibration CSV, labels, and validation comparison |
-| [`compare_manual_labels.py`](compare_manual_labels.py) | Compare pipeline counts/lengths to `data/labels/manual_v1.csv` |
+| [`prepare_paper_dataset.py`](prepare_paper_dataset.py) | Rebuild curated images, calibration CSV, semi-auto labels, validation comparison |
+| [`compare_manual_labels.py`](compare_manual_labels.py) | Compare pipeline counts/lengths/widths to label CSV (default: `manual_v1.csv`) |
+
+## Related docs
+
+| Doc | Purpose |
+|---|---|
+| [docs/LABELING_GUIDE.md](../docs/LABELING_GUIDE.md) | Fiji hand-measurement workflow |
+| [docs/AI_WORKFLOW.md](../docs/AI_WORKFLOW.md) | How to prompt AI for validation sprints |
+| [data/labels/README.md](../data/labels/README.md) | What each label file is |
 
 ## Typical workflow
 

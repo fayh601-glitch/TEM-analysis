@@ -81,7 +81,9 @@ bash scripts/run_demo.sh
 ## Suggested next tasks
 
 1. **Tune segmentation** for S2B and S2D (overlap / merged rods).
-2. **Hand-label** 30 rods in Fiji → update `data/labels/manual_v1.csv`.
+2. **Hand-label** 30–50 rods per panel in Fiji → `data/labels/manual_v2.csv`
+   (see [LABELING_GUIDE.md](LABELING_GUIDE.md); do not treat `manual_v1.csv` as
+   ground truth).
 3. **Streamlit upload UI** (`app/streamlit_app.py`).
 4. **Auto scale bar** in CLI via `--auto-scale-bar`.
 5. **ML phase** only if classical CV fails on your own TEM images.

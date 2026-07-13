@@ -16,6 +16,8 @@ data/labels/*
 !data/labels/.gitkeep
 !data/labels/manual_v1.example.csv
 !data/labels/manual_v1.csv
+!data/labels/manual_v2.template.csv
+!data/labels/README.md
 data/curated/*
 !data/curated/.gitkeep
 !data/curated/*.png

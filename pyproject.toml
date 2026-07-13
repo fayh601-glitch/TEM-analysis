@@ -28,6 +28,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "validation: Enright S2 panel regression tests (require curated images)",
+]
 
 [tool.ruff]
 line-length = 100

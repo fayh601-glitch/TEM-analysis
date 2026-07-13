@@ -120,6 +120,9 @@ class AnalysisResult:
     analysis_mode: AnalysisMode = AnalysisMode.BOTH
     selected_rod_ids: set[int] | None = None
     selected_dot_ids: set[int] | None = None
+    # Optional arrays for interactive review UIs (not written to CSV).
+    labels: object | None = None
+    image: object | None = None
 
     @property
     def rods(self) -> list[ParticleMeasurement]:

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Compare pipeline output to semi-manual labels in data/labels/manual_v1.csv.
+Compare pipeline output to semi-automated labels in data/labels/manual_v1.csv.
 
-Use this after segmentation or preset changes to see whether rod counts and mean
-lengths move closer to the reference labels (not rigorous ground truth).
+Use this after segmentation or preset changes to see whether rod counts, mean
+lengths, and mean widths move closer to the reference labels. manual_v1.csv is
+pipeline output (notes=semi_auto_tuned_pipeline), not independent ground truth.
+For real validation, use manual_v2.csv from Fiji (see docs/LABELING_GUIDE.md).
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ def main() -> None:
         "--labels",
         type=Path,
         default=None,
-        help="Path to manual labels CSV (default: data/labels/manual_v1.csv).",
+        help="Path to label CSV (default: data/labels/manual_v1.csv).",
     )
     parser.add_argument(
         "--calibration",
@@ -94,6 +96,18 @@ def main() -> None:
                 "label_median_length_nm": round(label_rods["length_nm"].median(), 1),
                 "pipeline_median_length_nm": round(
                     float(pd.Series([r.length_nm for r in rods]).median()), 1
+                )
+                if rods
+                else None,
+                "label_mean_width_nm": round(label_rods["width_nm"].mean(), 1),
+                "pipeline_mean_width_nm": round(
+                    sum(r.width_nm for r in rods) / len(rods), 1
+                )
+                if rods
+                else None,
+                "label_median_width_nm": round(label_rods["width_nm"].median(), 1),
+                "pipeline_median_width_nm": round(
+                    float(pd.Series([r.width_nm for r in rods]).median()), 1
                 )
                 if rods
                 else None,

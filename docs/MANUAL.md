@@ -209,7 +209,7 @@ TEM-analysis/
 ├── data/
 │   ├── curated/               Enright S2 TEM panels
 │   ├── calibration.csv        Scale bar per image
-│   └── labels/                Manual ground-truth labels
+│   └── labels/                Semi-auto + hand label CSVs (see labels/README.md)
 ├── outputs/
 │   ├── demo/                  Example results (on GitHub)
 │   └── user_runs/             Your analyses
@@ -276,26 +276,43 @@ Curated Enright SI panels in `data/curated/`:
 | `s2_D_65min.png` | 99.3 × 5.9 nm |
 
 Run demo: `bash scripts/run_demo.sh`  
-Compare: `outputs/validation/paper_comparison.csv`
+Compare: `outputs/validation/paper_comparison.csv` (length and width error %)
+
+**Limitation:** Comparison is pipeline mean vs **published paper means**, not
+per-rod Fiji measurements. `data/labels/manual_v1.csv` is semi-automated pipeline
+output (`notes=semi_auto_tuned_pipeline`), not independent ground truth.
+
+| Panel | Length error | Width error |
+|-------|-------------|-------------|
+| S2A | ~3% | ~62% |
+| S2B | ~49% | ~132% |
+| S2D | ~47% | ~15% |
+
+For rigorous validation, create hand labels per [LABELING_GUIDE.md](LABELING_GUIDE.md).
 
 ---
 
 ## 12. Testing
 
 ```bash
-pytest
+pytest                    # all tests
+pytest -m validation      # Enright S2 panel regression (needs curated images)
 ```
 
-Tests use synthetic images with known rod and dot shapes to catch regressions.
+Tests use synthetic images and, when `data/curated/s2_*.png` exist, compare
+pipeline means to published paper dimensions. S2B/S2D tests are marked `xfail`
+until segmentation improves.
 
 ---
 
 ## 13. Roadmap (known limitations)
 
-1. Dense touching rods merge — segmentation is the main bottleneck
-2. Screenshot images perform worse than raw TEM exports
-3. UV–Vis correlation not yet implemented
-4. Hand labels in `data/labels/manual_v1.csv` needed for rigorous validation
+1. Dense touching rods merge — segmentation is the main bottleneck (S2B/S2D fail
+   length validation at ~49% / ~47% error)
+2. Width systematically overestimated on dense panels (up to ~132% on S2B)
+3. Screenshot images perform worse than raw TEM exports
+4. UV–Vis correlation not yet implemented
+5. Fiji hand labels (`manual_v2.csv`) needed for rigorous per-rod validation
 
 ---
 

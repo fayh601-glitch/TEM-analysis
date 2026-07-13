@@ -175,6 +175,8 @@ def analyze_image(
         analysis_mode=cfg.analysis_mode,
         selected_rod_ids=selected_rod_ids,
         selected_dot_ids=selected_dot_ids,
+        labels=labels,
+        image=image,
     )
 
     if save_outputs:
