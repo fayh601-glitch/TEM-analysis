@@ -5,54 +5,55 @@ The TEM Particle Analyzer is a Streamlit app (`app/streamlit_app.py`).
 Anyone with the public URL (or a QR code pointing at it) can:
 
 1. Choose **Rods** or **Dots**
-2. Enter **scale bar (nm)** and **scale bar (pixels)**
+2. Enter the **scale bar length in nm** (pixels are measured automatically)
 3. Upload a TEM image
 4. Approve/discard outlines and download a CSV
 
-## Recommended host: Streamlit Community Cloud (free)
+## Your Cloud deploy
 
-1. Push this repo to GitHub (already at
-   https://github.com/fayh601-glitch/TEM-analysis).
-2. Open https://share.streamlit.io and sign in with GitHub.
-3. Click **New app** and set:
+After fixing deps, reopen or reboot the app at Streamlit Cloud. Expected URL:
+
+```text
+https://tem-analysis-y7v8uc3xf2fxfayixohzen.streamlit.app/
+```
+
+(Or whatever subdomain your Streamlit dashboard shows.)
+
+## Recommended settings (Streamlit Community Cloud)
+
+1. Open https://share.streamlit.io and sign in with GitHub.
+2. App settings:
    - **Repository:** `fayh601-glitch/TEM-analysis`
    - **Branch:** `main`
    - **Main file path:** `app/streamlit_app.py`
-   - **Python packages file:** `requirements-web.txt`
-     (Advanced settings → if available)
-4. Click **Deploy**.
+3. Ensure `runtime.txt` exists in the repo (`python-3.11`) — Cloud must not use Python 3.14.
+4. Click **Reboot app** / **Redeploy** after pulling the latest `main`.
 
-Your public link will look like:
+### Why the first deploy failed
 
-```text
-https://tem-analysis-<username>.streamlit.app
-```
+Cloud defaulted to **Python 3.14**, and pinned packages like `numpy==1.26.4` /
+`Pillow==10.4.0` / `scipy==1.11.4` have no wheels there, so installs tried to
+compile from source and crashed. The repo now pins **Python 3.11** and uses
+version ranges with binary wheels.
 
-or a custom subdomain you choose at deploy time.
-
-### Make a QR code for posters / lab notebook
-
-Once you have the public URL:
+### Make a QR code
 
 ```bash
-# from TEM-analysis with venv active
-pip install qrcode[pil]
-python scripts/make_app_qr.py "https://YOUR-APP.streamlit.app"
+pip install 'qrcode[pil]'
+python scripts/make_app_qr.py "https://tem-analysis-y7v8uc3xf2fxfayixohzen.streamlit.app"
 ```
 
-This writes `docs/tem_analyzer_qr.png` and prints the link.
-
-## Local testing (this machine only)
+## Local testing
 
 ```bash
 cd TEM-analysis
-source .venv/bin/activate
-pip install -r requirements-web.txt
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && pip install -e .
 streamlit run app/streamlit_app.py
 ```
 
-Open http://localhost:8501 — this is **not** a public website until Cloud is deployed.
+Open http://localhost:8501
 
-## GitHub link (source code)
+## GitHub
 
 https://github.com/fayh601-glitch/TEM-analysis

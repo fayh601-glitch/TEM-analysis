@@ -1,6 +1,3 @@
-# Streamlit Community Cloud / public web app dependencies
-# Used by: share.streamlit.io pointing at app/streamlit_app.py
-
+# Alias for Streamlit Cloud advanced settings (same as requirements.txt).
+# Prefer setting Main file to app/streamlit_app.py; Cloud installs requirements.txt by default.
 -r requirements.txt
-streamlit==1.39.0
-plotly==5.24.1

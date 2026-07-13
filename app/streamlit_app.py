@@ -24,6 +24,9 @@ import streamlit as st
 _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
+# Package lives under src/ (needed on Streamlit Cloud without `pip install -e .`)
+if str(_REPO / "src") not in sys.path:
+    sys.path.insert(0, str(_REPO / "src"))
 if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 

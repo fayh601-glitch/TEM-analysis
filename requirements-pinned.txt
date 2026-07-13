@@ -1,0 +1,35 @@
+# =============================================================================
+# TEM-analysis — core dependencies (Python 3.9+)
+# Install: pip install -r requirements.txt && pip install -e .
+# Optional UI/export/OCR: pip install -r requirements-optional.txt
+# =============================================================================
+
+# --- Core scientific computing ---
+numpy==1.26.4
+scipy==1.11.4
+pandas==2.1.4
+matplotlib==3.8.4
+
+# --- Image processing and I/O ---
+Pillow==10.4.0
+scikit-image==0.22.0
+opencv-python-headless==4.9.0.80
+imageio==2.34.2
+tifffile==2024.8.30
+
+# --- PDF image extraction (SI figures) ---
+pymupdf==1.24.10
+
+# --- CLI & configuration ---
+typer==0.12.5
+rich==13.9.4
+pydantic==2.9.2
+pydantic-settings==2.6.1
+python-dotenv==1.1.0
+
+# --- Testing ---
+pytest==8.3.3
+pytest-cov==6.0.0
+
+# --- Development & linting ---
+ruff==0.8.4
