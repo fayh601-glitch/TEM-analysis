@@ -45,7 +45,7 @@ from tem_rods.presets import PRESETS, get_preset  # noqa: E402
 from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar  # noqa: E402
 
 st.set_page_config(
-    page_title="TEM Particle Analyzer",
+    page_title="Python Based Geometric Analysis for TEM Images",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -64,7 +64,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("TEM Particle Analyzer")
+st.title("Python Based Geometric Analysis for TEM Images")
 st.caption(
     "Upload a TEM image → choose rods or dots → enter the scale bar (nm) → "
     "the app measures the bar in pixels → approve outlines → download results. "
@@ -245,7 +245,7 @@ _init_session()
 SAMPLE_50NM = _REPO / "data" / "curated" / "user_rods_50nm_jul13.png"
 
 # --- Primary controls (always visible before analyze) ---
-st.subheader("1. What are you measuring?")
+st.subheader("1. Particle morphology")
 mode_label = st.radio(
     "Particle type",
     options=["Rods", "Dots", "Both"],
