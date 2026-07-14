@@ -495,7 +495,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             st.session_state.analysis_done = False
             st.rerun()
 
-    m1, m2 = st.columns(2)
+    m1, m2, m3 = st.columns(3)
     with m1:
         if "mean_rod_length_nm" in stats:
             st.metric(
@@ -503,7 +503,19 @@ if st.session_state.analysis_done and st.session_state.particles:
                 f"{stats['mean_rod_length_nm']:.1f}",
             )
     with m2:
-        if "mean_dot_length_nm" in stats:
+        if "mean_rod_width_nm" in stats:
+            st.metric(
+                "Mean approved rod width (nm)",
+                f"{stats['mean_rod_width_nm']:.1f}",
+            )
+    with m3:
+        if "mean_dot_diameter_nm" in stats:
+            st.metric(
+                "Mean approved dot diameter (nm)",
+                f"{stats['mean_dot_diameter_nm']:.1f}",
+                help="Average of ellipse length and width for each approved dot.",
+            )
+        elif "mean_dot_length_nm" in stats:
             st.metric(
                 "Mean approved dot size (nm)",
                 f"{stats['mean_dot_length_nm']:.1f}",

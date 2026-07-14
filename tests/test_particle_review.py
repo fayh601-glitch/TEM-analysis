@@ -66,6 +66,17 @@ def test_summarize_approved():
     stats = summarize_approved(particles, {1, 2})
     assert stats["approved_rods"] == 2
     assert stats["mean_rod_length_nm"] == 30.0
+    assert stats["mean_rod_width_nm"] == 5.0
+
+
+def test_summarize_dots_reports_diameter():
+    particles = [
+        ParticleMeasurement(1, ParticleClass.DOT, 10.0, 8.0, 1.25, 0.2, 50.0, 0, 0, 5, 4, 20),
+        ParticleMeasurement(2, ParticleClass.DOT, 12.0, 12.0, 1.0, 0.1, 60.0, 0, 0, 6, 6, 25),
+    ]
+    stats = summarize_approved(particles, {1, 2})
+    assert stats["approved_dots"] == 2
+    assert stats["mean_dot_diameter_nm"] == 10.5  # (9+12)/2
 
 
 def test_filter_approved_by_length():

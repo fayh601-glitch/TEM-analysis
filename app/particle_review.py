@@ -105,6 +105,10 @@ def summarize_approved(
     if dots:
         out["mean_dot_length_nm"] = round(sum(p.length_nm for p in dots) / len(dots), 2)
         out["mean_dot_width_nm"] = round(sum(p.width_nm for p in dots) / len(dots), 2)
+        # For roughly round particles, diameter ≈ average of the two ellipse axes.
+        out["mean_dot_diameter_nm"] = round(
+            sum(0.5 * (p.length_nm + p.width_nm) for p in dots) / len(dots), 2
+        )
     return out
 
 
