@@ -72,10 +72,12 @@ def particles_to_rows(
                 "class": p.particle_class.value,
                 "length_nm (ellipse)": round(p.length_nm, 2),
                 "width_nm (ellipse)": round(p.width_nm, 2),
-                "feret_max_nm": round(p.feret_max_nm, 2),
-                "feret_min_nm": round(p.feret_min_nm, 2),
-                "equiv_diameter_nm": round(p.equiv_diameter_nm, 2),
-                "circularity": round(p.circularity, 3),
+                "feret_max_nm": round(float(getattr(p, "feret_max_nm", 0.0) or 0.0), 2),
+                "feret_min_nm": round(float(getattr(p, "feret_min_nm", 0.0) or 0.0), 2),
+                "equiv_diameter_nm": round(
+                    float(getattr(p, "equiv_diameter_nm", 0.0) or 0.0), 2
+                ),
+                "circularity": round(float(getattr(p, "circularity", 0.0) or 0.0), 3),
                 "aspect_ratio": round(p.aspect_ratio, 2),
                 "approved": p.particle_id in approved_ids,
                 "centroid_x": round(p.centroid_x, 1),
@@ -106,20 +108,25 @@ def summarize_approved(
         "discarded_count": len(particles) - len(kept),
         "sample_size_note": sample_size_note(len(kept)),
     }
+    def _f(p: ParticleMeasurement, name: str) -> float:
+        return float(getattr(p, name, 0.0) or 0.0)
+
     if rods:
         out["mean_rod_length_nm"] = round(sum(p.length_nm for p in rods) / len(rods), 2)
         out["mean_rod_width_nm"] = round(sum(p.width_nm for p in rods) / len(rods), 2)
         out["mean_rod_feret_max_nm"] = round(
-            sum(p.feret_max_nm for p in rods) / len(rods), 2
+            sum(_f(p, "feret_max_nm") for p in rods) / len(rods), 2
         )
         out["mean_rod_feret_min_nm"] = round(
-            sum(p.feret_min_nm for p in rods) / len(rods), 2
+            sum(_f(p, "feret_min_nm") for p in rods) / len(rods), 2
         )
         out["mean_rod_circularity"] = round(
-            sum(p.circularity for p in rods) / len(rods), 3
+            sum(_f(p, "circularity") for p in rods) / len(rods), 3
         )
         fit_len = fit_lognormal([p.length_nm for p in rods])
-        fit_feret = fit_lognormal([p.feret_max_nm for p in rods if p.feret_max_nm > 0])
+        fit_feret = fit_lognormal(
+            [_f(p, "feret_max_nm") for p in rods if _f(p, "feret_max_nm") > 0]
+        )
         if fit_len is not None:
             out["lognormal_rod_length_nm"] = round(fit_len.geometric_mean, 2)
             out["lognormal_rod_length_se_nm"] = round(fit_len.geometric_mean_se, 2)
@@ -130,17 +137,19 @@ def summarize_approved(
         out["mean_dot_length_nm"] = round(sum(p.length_nm for p in dots) / len(dots), 2)
         out["mean_dot_width_nm"] = round(sum(p.width_nm for p in dots) / len(dots), 2)
         out["mean_dot_equiv_diameter_nm"] = round(
-            sum(p.equiv_diameter_nm for p in dots) / len(dots), 2
+            sum(_f(p, "equiv_diameter_nm") for p in dots) / len(dots), 2
         )
         out["mean_dot_feret_max_nm"] = round(
-            sum(p.feret_max_nm for p in dots) / len(dots), 2
+            sum(_f(p, "feret_max_nm") for p in dots) / len(dots), 2
         )
         out["mean_dot_circularity"] = round(
-            sum(p.circularity for p in dots) / len(dots), 3
+            sum(_f(p, "circularity") for p in dots) / len(dots), 3
         )
         # Prefer area-equivalent diameter; fall back to axis average for legacy rows.
         diameters = [
-            p.equiv_diameter_nm if p.equiv_diameter_nm > 0 else 0.5 * (p.length_nm + p.width_nm)
+            _f(p, "equiv_diameter_nm")
+            if _f(p, "equiv_diameter_nm") > 0
+            else 0.5 * (p.length_nm + p.width_nm)
             for p in dots
         ]
         out["mean_dot_diameter_nm"] = round(sum(diameters) / len(diameters), 2)

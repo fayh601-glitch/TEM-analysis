@@ -31,6 +31,12 @@ if str(_REPO / "src") not in sys.path:
 if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
+# Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
+_APP_BUILD = "2026-07-14-feret-1"
+for _mod in list(sys.modules):
+    if _mod == "tem_rods" or _mod.startswith("tem_rods."):
+        del sys.modules[_mod]
+
 from particle_review import (  # noqa: E402
     add_particle_at_click,
     approved_csv_bytes,
@@ -125,6 +131,7 @@ def _dicts_to_particles(rows: list[dict]) -> list[ParticleMeasurement]:
 
 
 def _particles_to_dicts(particles: list[ParticleMeasurement]) -> list[dict]:
+    """Serialize particles for session_state (tolerant of older ParticleMeasurement)."""
     rows = []
     for p in particles:
         rows.append(
@@ -141,10 +148,10 @@ def _particles_to_dicts(particles: list[ParticleMeasurement]) -> list[dict]:
                 "length_px": p.length_px,
                 "width_px": p.width_px,
                 "area_px": p.area_px,
-                "feret_max_nm": p.feret_max_nm,
-                "feret_min_nm": p.feret_min_nm,
-                "circularity": p.circularity,
-                "equiv_diameter_nm": p.equiv_diameter_nm,
+                "feret_max_nm": float(getattr(p, "feret_max_nm", 0.0) or 0.0),
+                "feret_min_nm": float(getattr(p, "feret_min_nm", 0.0) or 0.0),
+                "circularity": float(getattr(p, "circularity", 0.0) or 0.0),
+                "equiv_diameter_nm": float(getattr(p, "equiv_diameter_nm", 0.0) or 0.0),
             }
         )
     return rows
