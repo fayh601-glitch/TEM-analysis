@@ -19,6 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 import streamlit as st
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -35,6 +36,7 @@ from particle_review import (  # noqa: E402
     approved_csv_bytes,
     build_review_figure,
     default_approved_ids,
+    filter_approved_by_length,
     particle_id_from_plotly_selection,
     particles_to_rows,
     render_annotated_rgb,
@@ -379,6 +381,61 @@ if st.session_state.analysis_done and st.session_state.particles:
     )
     if st.session_state.calibration_note:
         st.info(st.session_state.calibration_note)
+
+    st.markdown("##### Length filter (discard outliers)")
+    st.caption(
+        "After you see auto-detected lengths, set an allowed range. "
+        "Particles shorter or longer than this range are discarded (shown red)."
+    )
+    lengths = [p.length_nm for p in particles if p.particle_class != ParticleClass.REJECT]
+    if lengths:
+        st.caption(
+            f"Detected length range (non-reject): "
+            f"{min(lengths):.1f}–{max(lengths):.1f} nm · "
+            f"median {float(np.median(lengths)):.1f} nm"
+        )
+    lf1, lf2, lf3 = st.columns([1, 1, 1])
+    with lf1:
+        min_len = st.number_input(
+            "Min length (nm)",
+            min_value=0.0,
+            value=float(st.session_state.get("filter_min_length_nm", 50.0)),
+            step=1.0,
+            help="Discard particles shorter than this.",
+        )
+    with lf2:
+        max_len = st.number_input(
+            "Max length (nm)",
+            min_value=0.0,
+            value=float(st.session_state.get("filter_max_length_nm", 200.0)),
+            step=1.0,
+            help="Discard particles longer than this.",
+        )
+    with lf3:
+        st.write("")
+        st.write("")
+        apply_len = st.button("Apply length filter", type="primary")
+    if apply_len:
+        if max_len < min_len:
+            st.error("Max length must be ≥ min length.")
+        else:
+            st.session_state.filter_min_length_nm = min_len
+            st.session_state.filter_max_length_nm = max_len
+            # Start from all rods/dots, then apply range (so re-applying is predictable).
+            base = default_approved_ids(particles)
+            filtered, n_out = filter_approved_by_length(
+                particles,
+                base,
+                min_length_nm=min_len,
+                max_length_nm=max_len,
+            )
+            st.session_state.approved_ids = filtered
+            st.session_state.add_message = (
+                f"Length filter applied ({min_len:g}–{max_len:g} nm): "
+                f"kept {len(filtered)}, discarded {n_out} outliers."
+            )
+            st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
+            st.rerun()
 
     click_mode = st.radio(
         "Click action",

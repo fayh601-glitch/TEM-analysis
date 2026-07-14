@@ -68,11 +68,16 @@ def test_summarize_approved():
     assert stats["mean_rod_length_nm"] == 30.0
 
 
-def test_particle_id_from_selection():
-    class Sel:
-        class selection:
-            points = [{"customdata": 7}]
+def test_filter_approved_by_length():
+    from particle_review import filter_approved_by_length
 
-    assert particle_id_from_plotly_selection(Sel()) == 7
-    assert particle_id_from_plotly_selection({"selection": {"points": [{"customdata": 3}]}}) == 3
-    assert particle_id_from_plotly_selection(None) is None
+    particles = [
+        ParticleMeasurement(1, ParticleClass.ROD, 30.0, 5.0, 6.0, 0.9, 100.0, 0, 0, 10, 3, 50),
+        ParticleMeasurement(2, ParticleClass.ROD, 100.0, 5.0, 6.0, 0.9, 100.0, 0, 0, 10, 3, 50),
+        ParticleMeasurement(3, ParticleClass.ROD, 250.0, 5.0, 6.0, 0.9, 100.0, 0, 0, 10, 3, 50),
+    ]
+    kept, n = filter_approved_by_length(
+        particles, {1, 2, 3}, min_length_nm=50.0, max_length_nm=120.0
+    )
+    assert kept == {2}
+    assert n == 2

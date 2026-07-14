@@ -31,6 +31,33 @@ def default_approved_ids(
     return approved
 
 
+def filter_approved_by_length(
+    particles: Iterable[ParticleMeasurement],
+    approved_ids: set[int],
+    *,
+    min_length_nm: float | None = None,
+    max_length_nm: float | None = None,
+) -> tuple[set[int], int]:
+    """
+    Keep only approved particles whose length_nm is within [min, max].
+
+    Returns (updated_approved_ids, n_discarded_by_filter).
+    """
+    kept: set[int] = set()
+    discarded = 0
+    for p in particles:
+        if p.particle_id not in approved_ids:
+            continue
+        if min_length_nm is not None and p.length_nm < min_length_nm:
+            discarded += 1
+            continue
+        if max_length_nm is not None and p.length_nm > max_length_nm:
+            discarded += 1
+            continue
+        kept.add(p.particle_id)
+    return kept, discarded
+
+
 def particles_to_rows(
     particles: list[ParticleMeasurement],
     approved_ids: set[int],
