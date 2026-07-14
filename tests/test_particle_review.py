@@ -81,3 +81,13 @@ def test_filter_approved_by_length():
     )
     assert kept == {2}
     assert n == 2
+
+
+def test_particle_id_from_selection():
+    class Sel:
+        class selection:
+            points = [{"customdata": 7}]
+
+    assert particle_id_from_plotly_selection(Sel()) == 7
+    assert particle_id_from_plotly_selection({"selection": {"points": [{"customdata": 3}]}}) == 3
+    assert particle_id_from_plotly_selection(None) is None
