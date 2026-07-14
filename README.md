@@ -32,14 +32,16 @@ On the website home screen you **pick Rods or Dots** and enter the **scale bar (
 
 ## Public website + QR code
 
-To host a shareable link (and QR) anyone can open on a phone:
+**Live app:** https://tem-analysis-pinc.streamlit.app/
 
-1. Deploy on Streamlit Community Cloud — see **[docs/DEPLOY_WEBSITE.md](docs/DEPLOY_WEBSITE.md)**
-2. Generate a QR for your public URL:
-   ```bash
-   pip install 'qrcode[pil]'
-   python scripts/make_app_qr.py "https://YOUR-APP.streamlit.app"
-   ```
+Deploy / update notes: **[docs/DEPLOY_WEBSITE.md](docs/DEPLOY_WEBSITE.md)**
+
+Generate a QR for the public URL:
+
+```bash
+pip install 'qrcode[pil]'
+python scripts/make_app_qr.py "https://tem-analysis-pinc.streamlit.app"
+```
 
 Repo: https://github.com/fayh601-glitch/TEM-analysis
 

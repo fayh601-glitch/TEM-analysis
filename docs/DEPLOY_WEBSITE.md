@@ -25,10 +25,10 @@ That is why installs hang or fail. You must pick the Python version in the
 6. Set **Python version** to **3.11** or **3.12** (not 3.13 / 3.14)
 7. Deploy and wait (first install of scipy/skimage can take 5–15 minutes)
 
-After it works, your public URL will be something like:
+Public app URL:
 
 ```text
-https://tem-analysis-y7v8uc3xf2fxfayixohzen.streamlit.app/
+https://tem-analysis-pinc.streamlit.app/
 ```
 
 ### Check logs while it cooks
