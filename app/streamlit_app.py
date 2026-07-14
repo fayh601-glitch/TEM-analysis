@@ -31,11 +31,13 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 from particle_review import (  # noqa: E402
+    add_particle_at_click,
     approved_csv_bytes,
     build_review_figure,
     default_approved_ids,
     particle_id_from_plotly_selection,
     particles_to_rows,
+    render_annotated_rgb,
     summarize_approved,
     toggle_particle,
 )
@@ -84,6 +86,10 @@ def _init_session() -> None:
         "last_clicked_id": None,
         "analysis_done": False,
         "calibration_note": None,
+        "nm_per_pixel": None,
+        "analysis_mode": AnalysisMode.RODS.value,
+        "add_message": None,
+        "last_add_click": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -149,6 +155,7 @@ def _store_analysis_result(
     stem: str,
     *,
     calibration_note: str | None = None,
+    analysis_mode: AnalysisMode | None = None,
 ) -> None:
     st.session_state.particles = _particles_to_dicts(result.particles)
     st.session_state.approved_ids = default_approved_ids(result.particles)
@@ -160,6 +167,12 @@ def _store_analysis_result(
     st.session_state.last_clicked_id = None
     st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
     st.session_state.calibration_note = calibration_note
+    st.session_state.nm_per_pixel = float(result.nm_per_pixel)
+    st.session_state.analysis_mode = (
+        analysis_mode.value if analysis_mode is not None else result.analysis_mode.value
+    )
+    st.session_state.add_message = None
+    st.session_state.last_add_click = None
     if result.overlay_path and result.overlay_path.exists():
         st.session_state.overlay_bytes = result.overlay_path.read_bytes()
     else:
@@ -227,7 +240,12 @@ def _run_analysis(
             scale_bar=scale_bar,
             scale_bar_nm_hint=scale_bar_nm,
         )
-    _store_analysis_result(result, image_path.stem, calibration_note=calib_note)
+    _store_analysis_result(
+        result,
+        image_path.stem,
+        calibration_note=calib_note,
+        analysis_mode=analysis_mode,
+    )
 
 
 def _default_preset_for_mode(mode: AnalysisMode) -> str:
@@ -362,6 +380,30 @@ if st.session_state.analysis_done and st.session_state.particles:
     if st.session_state.calibration_note:
         st.info(st.session_state.calibration_note)
 
+    click_mode = st.radio(
+        "Click action",
+        options=[
+            "Toggle keep / discard (click numbered marker)",
+            "Add missed particle (click dark particle on image)",
+        ],
+        index=0,
+        horizontal=True,
+        help=(
+            "Use Add mode when auto-detect missed rods/dots. "
+            "Click near the center of a dark particle to measure and keep it."
+        ),
+    )
+
+    preferred_class = (
+        ParticleClass.DOT
+        if st.session_state.analysis_mode == AnalysisMode.DOTS.value
+        else ParticleClass.ROD
+    )
+    if st.session_state.analysis_mode == AnalysisMode.BOTH.value:
+        preferred_class = (
+            ParticleClass.DOT if mode_label == "Dots" else ParticleClass.ROD
+        )
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         if st.button("Approve all rods/dots"):
@@ -388,6 +430,9 @@ if st.session_state.analysis_done and st.session_state.particles:
                 "warnings",
                 "last_clicked_id",
                 "calibration_note",
+                "nm_per_pixel",
+                "add_message",
+                "last_add_click",
             ):
                 st.session_state[key] = None if key != "approved_ids" else set()
             st.session_state.analysis_done = False
@@ -407,29 +452,93 @@ if st.session_state.analysis_done and st.session_state.particles:
                 f"{stats['mean_dot_length_nm']:.1f}",
             )
 
-    fig = build_review_figure(
-        st.session_state.image,
-        particles,
-        approved_ids,
-        labels=st.session_state.labels,
-        show_rejects=show_rejected,
-    )
-    plot_key = f"review_plot_{st.session_state.get('plot_nonce', 0)}"
-    selection = st.plotly_chart(
-        fig,
-        use_container_width=True,
-        on_select="rerun",
-        selection_mode="points",
-        key=plot_key,
-    )
-    clicked_id = particle_id_from_plotly_selection(selection)
-    if clicked_id is not None:
-        st.session_state.approved_ids = toggle_particle(approved_ids, clicked_id)
-        st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
-        st.rerun()
+    if st.session_state.add_message:
+        st.success(st.session_state.add_message)
+
+    if click_mode.startswith("Toggle"):
+        fig = build_review_figure(
+            st.session_state.image,
+            particles,
+            approved_ids,
+            labels=st.session_state.labels,
+            show_rejects=show_rejected,
+        )
+        plot_key = f"review_plot_{st.session_state.get('plot_nonce', 0)}"
+        selection = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="points",
+            key=plot_key,
+        )
+        clicked_id = particle_id_from_plotly_selection(selection)
+        if clicked_id is not None:
+            st.session_state.approved_ids = toggle_particle(approved_ids, clicked_id)
+            st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
+            st.rerun()
+    else:
+        st.caption(
+            "Click the **dark center** of a missed particle. "
+            f"New particles are saved as **{preferred_class.value}s**."
+        )
+        try:
+            from streamlit_image_coordinates import streamlit_image_coordinates
+        except ImportError:
+            st.error(
+                "Missing package `streamlit-image-coordinates`. "
+                "Install with: pip install streamlit-image-coordinates"
+            )
+            streamlit_image_coordinates = None  # type: ignore
+
+        if streamlit_image_coordinates is not None:
+            annotated = render_annotated_rgb(
+                st.session_state.image,
+                particles,
+                approved_ids,
+                labels=st.session_state.labels,
+                show_rejects=show_rejected,
+            )
+            click = streamlit_image_coordinates(
+                annotated,
+                key=f"add_click_{st.session_state.get('plot_nonce', 0)}",
+            )
+            if click and "x" in click and "y" in click:
+                click_key = (int(click["x"]), int(click["y"]))
+                if click_key != st.session_state.last_add_click:
+                    nm_pp = float(st.session_state.nm_per_pixel or 1.0)
+                    new_particles, new_labels, msg = add_particle_at_click(
+                        st.session_state.image,
+                        st.session_state.labels,
+                        particles,
+                        click_y=float(click["y"]),
+                        click_x=float(click["x"]),
+                        nm_per_pixel=nm_pp,
+                        preferred_class=preferred_class,
+                    )
+                    old_ids = {p.particle_id for p in particles}
+                    new_ids = {p.particle_id for p in new_particles} - old_ids
+                    st.session_state.particles = _particles_to_dicts(new_particles)
+                    st.session_state.labels = new_labels
+                    approved = set(st.session_state.approved_ids) | new_ids
+                    if "particle #" in msg:
+                        try:
+                            pid = int(msg.split("particle #")[1].split()[0].rstrip("."))
+                            approved.add(pid)
+                        except ValueError:
+                            pass
+                    st.session_state.approved_ids = approved
+                    st.session_state.add_message = msg
+                    st.session_state.last_add_click = click_key
+                    st.session_state.plot_nonce = (
+                        st.session_state.get("plot_nonce", 0) + 1
+                    )
+                    st.rerun()
 
     st.subheader("Particle list")
-    st.caption("Uncheck **approved** to discard, or click markers on the plot.")
+    st.caption(
+        "Uncheck **approved** to discard. "
+        "Use **Add missed particle** mode above to click particles the auto-detect missed."
+    )
     table = pd.DataFrame(particles_to_rows(particles, approved_ids))
     edited = st.data_editor(
         table,
@@ -469,7 +578,8 @@ if st.session_state.analysis_done and st.session_state.particles:
 
 st.markdown("---")
 st.markdown(
-    "**Legend:** green marker = keep · red = discard · orange = pipeline reject  \n"
+    "**Legend:** green = keep · red = discard · orange = pipeline reject  \n"
+    "**Add mode:** click a missed dark particle to measure and include it  \n"
     "Repo: [github.com/fayh601-glitch/TEM-analysis](https://github.com/fayh601-glitch/TEM-analysis) · "
     "Deploy guide: `docs/DEPLOY_WEBSITE.md`"
 )

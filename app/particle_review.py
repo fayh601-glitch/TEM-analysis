@@ -238,3 +238,224 @@ def particle_id_from_plotly_selection(selection) -> int | None:
         return int(custom)
     except (TypeError, ValueError):
         return None
+
+
+def _as_float_gray(image: np.ndarray) -> np.ndarray:
+    if image.ndim == 3:
+        gray = image.astype(np.float64).mean(axis=2)
+    else:
+        gray = image.astype(np.float64)
+    if gray.max() > 1.5:
+        gray = gray / 255.0
+    return gray
+
+
+def _measure_region(
+    region,
+    *,
+    particle_id: int,
+    nm_per_pixel: float,
+    forced_class: ParticleClass,
+) -> ParticleMeasurement:
+    length_px = float(region.major_axis_length)
+    width_px = float(region.minor_axis_length)
+    if width_px <= 0:
+        width_px = 1e-6
+    return ParticleMeasurement(
+        particle_id=particle_id,
+        particle_class=forced_class,
+        length_nm=length_px * nm_per_pixel,
+        width_nm=width_px * nm_per_pixel,
+        aspect_ratio=length_px / width_px,
+        eccentricity=float(region.eccentricity),
+        area_nm2=int(region.area) * (nm_per_pixel**2),
+        centroid_y=float(region.centroid[0]),
+        centroid_x=float(region.centroid[1]),
+        length_px=length_px,
+        width_px=width_px,
+        area_px=int(region.area),
+    )
+
+
+def add_particle_at_click(
+    image: np.ndarray,
+    labels: np.ndarray,
+    particles: list[ParticleMeasurement],
+    *,
+    click_y: float,
+    click_x: float,
+    nm_per_pixel: float,
+    preferred_class: ParticleClass,
+    min_area_px: int = 25,
+) -> tuple[list[ParticleMeasurement], np.ndarray, str]:
+    """
+    Add or promote a particle under a user click.
+
+    - If the click lands on an existing segmented blob, promote/keep it.
+    - Otherwise grow a dark connected region from the click and measure it.
+    """
+    from skimage.filters import threshold_local, threshold_otsu
+    from skimage.measure import label as sk_label
+    from skimage.morphology import binary_closing, disk
+
+    if labels is None:
+        labels = np.zeros(image.shape[:2], dtype=np.int32)
+    else:
+        labels = np.asarray(labels).copy()
+
+    h, w = labels.shape[:2]
+    y = int(np.clip(round(click_y), 0, h - 1))
+    x = int(np.clip(round(click_x), 0, w - 1))
+    by_id = {p.particle_id: p for p in particles}
+
+    existing_id = int(labels[y, x])
+    if existing_id > 0:
+        if existing_id in by_id:
+            p = by_id[existing_id]
+            if p.particle_class != preferred_class:
+                updated = []
+                for item in particles:
+                    if item.particle_id == existing_id:
+                        updated.append(
+                            ParticleMeasurement(
+                                particle_id=item.particle_id,
+                                particle_class=preferred_class,
+                                length_nm=item.length_nm,
+                                width_nm=item.width_nm,
+                                aspect_ratio=item.aspect_ratio,
+                                eccentricity=item.eccentricity,
+                                area_nm2=item.area_nm2,
+                                centroid_y=item.centroid_y,
+                                centroid_x=item.centroid_x,
+                                length_px=item.length_px,
+                                width_px=item.width_px,
+                                area_px=item.area_px,
+                            )
+                        )
+                    else:
+                        updated.append(item)
+                return (
+                    updated,
+                    labels,
+                    f"Promoted particle #{existing_id} to {preferred_class.value} and added it.",
+                )
+            return particles, labels, f"Particle #{existing_id} was already detected — keep it approved."
+        # Label exists but no measurement (orphan): measure it now.
+        props = [r for r in regionprops(labels) if r.label == existing_id]
+        if props and props[0].area >= min_area_px:
+            measured = _measure_region(
+                props[0],
+                particle_id=existing_id,
+                nm_per_pixel=nm_per_pixel,
+                forced_class=preferred_class,
+            )
+            return (
+                particles + [measured],
+                labels,
+                f"Added existing blob as particle #{existing_id}.",
+            )
+
+    gray = _as_float_gray(image)
+    try:
+        local_t = threshold_local(gray, block_size=51, offset=0.01)
+        binary = gray < local_t
+    except ValueError:
+        binary = gray < threshold_otsu(gray)
+
+    if not binary[y, x]:
+        # Seed is bright; still try a small neighborhood for a dark pixel.
+        yy, xx = np.ogrid[-4:5, -4:5]
+        nearby = (y + yy, x + xx)
+        dark_hits = []
+        for dy in range(-4, 5):
+            for dx in range(-4, 5):
+                ny, nx = y + dy, x + dx
+                if 0 <= ny < h and 0 <= nx < w and binary[ny, nx]:
+                    dark_hits.append((ny, nx))
+        if not dark_hits:
+            binary = binary_closing(binary, disk(2))
+            if not binary[y, x]:
+                return (
+                    particles,
+                    labels,
+                    "No dark particle found at that click. Aim at the center of a dark rod/dot.",
+                )
+        else:
+            y, x = min(dark_hits, key=lambda p: (p[0] - y) ** 2 + (p[1] - x) ** 2)
+
+    lab = sk_label(binary)
+    lid = int(lab[y, x])
+    if lid == 0:
+        binary = binary_closing(binary, disk(2))
+        lab = sk_label(binary)
+        lid = int(lab[y, x])
+    if lid == 0:
+        return particles, labels, "Could not grow a particle from that click."
+
+    mask = lab == lid
+    area = int(mask.sum())
+    if area < min_area_px:
+        return particles, labels, f"Region too small ({area} px). Try a clearer click on a particle."
+    if area > (h * w) * 0.15:
+        return particles, labels, "Region too large — click may have leaked into background."
+
+    new_id = int(labels.max()) + 1 if labels.max() > 0 else 1
+    # Avoid id collision with particle_id namespace that might not match label max.
+    if particles:
+        new_id = max(new_id, max(p.particle_id for p in particles) + 1)
+    labels[mask] = new_id
+    props = [r for r in regionprops(labels) if r.label == new_id]
+    measured = _measure_region(
+        props[0],
+        particle_id=new_id,
+        nm_per_pixel=nm_per_pixel,
+        forced_class=preferred_class,
+    )
+    return (
+        particles + [measured],
+        labels,
+        f"Added particle #{new_id} ({measured.length_nm:.1f}×{measured.width_nm:.1f} nm).",
+    )
+
+
+def render_annotated_rgb(
+    image: np.ndarray,
+    particles: list[ParticleMeasurement],
+    approved_ids: set[int],
+    labels: np.ndarray | None = None,
+    *,
+    show_rejects: bool = True,
+) -> np.ndarray:
+    """RGB overlay image for click-to-add interaction."""
+    gray = _as_float_gray(image)
+    rgb = (np.stack([gray, gray, gray], axis=-1) * 255).astype(np.uint8)
+    if labels is None:
+        return rgb
+
+    from PIL import Image as PILImage, ImageDraw
+
+    pil = PILImage.fromarray(rgb)
+    draw = ImageDraw.Draw(pil)
+    by_id = {p.particle_id: p for p in particles}
+
+    for region in regionprops(labels):
+        particle = by_id.get(region.label)
+        if particle is None:
+            continue
+        if particle.particle_class == ParticleClass.REJECT and not show_rejects:
+            continue
+        approved = particle.particle_id in approved_ids
+        if particle.particle_class == ParticleClass.REJECT:
+            color = (255, 140, 0)
+        elif approved:
+            color = (0, 200, 100)
+        else:
+            color = (200, 50, 50)
+        mask = labels == region.label
+        for contour in find_contours(mask.astype(float), 0.5):
+            pts = [(float(c[1]), float(c[0])) for c in contour]
+            if len(pts) >= 2:
+                draw.line(pts, fill=color, width=2)
+        cy, cx = region.centroid
+        draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=color)
+    return np.asarray(pil)
