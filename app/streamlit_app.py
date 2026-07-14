@@ -51,6 +51,19 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+st.markdown(
+    """
+    <style>
+    html, body, [class*="css"], .stApp, .stMarkdown, .stText,
+    .stButton > button, .stSelectbox, .stRadio, .stNumberInput,
+    .stCaption, label, p, h1, h2, h3, h4, h5, h6 {
+        font-family: "Times New Roman", Times, serif !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("TEM Particle Analyzer")
 st.caption(
     "Upload a TEM image → choose rods or dots → enter the scale bar (nm) → "
