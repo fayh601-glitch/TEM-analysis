@@ -115,6 +115,10 @@ def _dicts_to_particles(rows: list[dict]) -> list[ParticleMeasurement]:
                 length_px=float(row["length_px"]),
                 width_px=float(row["width_px"]),
                 area_px=int(row["area_px"]),
+                feret_max_nm=float(row.get("feret_max_nm", 0.0) or 0.0),
+                feret_min_nm=float(row.get("feret_min_nm", 0.0) or 0.0),
+                circularity=float(row.get("circularity", 0.0) or 0.0),
+                equiv_diameter_nm=float(row.get("equiv_diameter_nm", 0.0) or 0.0),
             )
         )
     return out
@@ -137,6 +141,10 @@ def _particles_to_dicts(particles: list[ParticleMeasurement]) -> list[dict]:
                 "length_px": p.length_px,
                 "width_px": p.width_px,
                 "area_px": p.area_px,
+                "feret_max_nm": p.feret_max_nm,
+                "feret_min_nm": p.feret_min_nm,
+                "circularity": p.circularity,
+                "equiv_diameter_nm": p.equiv_diameter_nm,
             }
         )
     return rows
@@ -495,31 +503,129 @@ if st.session_state.analysis_done and st.session_state.particles:
             st.session_state.analysis_done = False
             st.rerun()
 
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3, m4 = st.columns(4)
     with m1:
         if "mean_rod_length_nm" in stats:
             st.metric(
-                "Mean approved rod length (nm)",
+                "Mean rod length (ellipse, nm)",
                 f"{stats['mean_rod_length_nm']:.1f}",
+                help="Fitted ellipse major axis — matches overlay drawing.",
+            )
+        elif "mean_dot_diameter_nm" in stats:
+            st.metric(
+                "Mean dot diameter (nm)",
+                f"{stats['mean_dot_diameter_nm']:.1f}",
+                help="Area-equivalent diameter 2√(A/π).",
             )
     with m2:
         if "mean_rod_width_nm" in stats:
             st.metric(
-                "Mean approved rod width (nm)",
+                "Mean rod width (ellipse, nm)",
                 f"{stats['mean_rod_width_nm']:.1f}",
+                help="Fitted ellipse minor axis.",
+            )
+        elif "mean_dot_feret_max_nm" in stats:
+            st.metric(
+                "Mean dot Feret max (nm)",
+                f"{stats['mean_dot_feret_max_nm']:.1f}",
+                help="Maximum caliper diameter.",
             )
     with m3:
-        if "mean_dot_diameter_nm" in stats:
+        if "mean_rod_feret_max_nm" in stats:
             st.metric(
-                "Mean approved dot diameter (nm)",
-                f"{stats['mean_dot_diameter_nm']:.1f}",
-                help="Average of ellipse length and width for each approved dot.",
+                "Mean rod Feret max (nm)",
+                f"{stats['mean_rod_feret_max_nm']:.1f}",
+                help="Maximum caliper diameter (Aviles & Lear size metric).",
             )
-        elif "mean_dot_length_nm" in stats:
+        elif "mean_dot_circularity" in stats:
             st.metric(
-                "Mean approved dot size (nm)",
-                f"{stats['mean_dot_length_nm']:.1f}",
+                "Mean dot circularity",
+                f"{stats['mean_dot_circularity']:.3f}",
+                help="4π·area/perimeter² (1 = perfect circle).",
             )
+    with m4:
+        if "lognormal_rod_feret_max_nm" in stats:
+            st.metric(
+                "Rod Feret max (log-normal)",
+                f"{stats['lognormal_rod_feret_max_nm']:.1f}",
+                delta=f"±{stats['lognormal_rod_feret_max_se_nm']:.1f} SE",
+                delta_color="off",
+                help="Geometric mean from log-normal fit; ± is SE of the mean, not sample SD.",
+            )
+        elif "lognormal_dot_diameter_nm" in stats:
+            st.metric(
+                "Dot diameter (log-normal)",
+                f"{stats['lognormal_dot_diameter_nm']:.1f}",
+                delta=f"±{stats['lognormal_dot_diameter_se_nm']:.1f} SE",
+                delta_color="off",
+                help="Geometric mean from log-normal fit; ± is SE of the mean, not sample SD.",
+            )
+        elif "mean_rod_feret_min_nm" in stats:
+            st.metric(
+                "Mean rod Feret min (nm)",
+                f"{stats['mean_rod_feret_min_nm']:.1f}",
+                help="Minimum caliper diameter (rod width proxy).",
+            )
+
+    if stats.get("sample_size_note"):
+        st.info(stats["sample_size_note"])
+
+    # Size / morphology histograms for approved particles
+    approved_particles = [p for p in particles if p.particle_id in approved_ids]
+    rods_a = [p for p in approved_particles if p.particle_class == ParticleClass.ROD]
+    dots_a = [p for p in approved_particles if p.particle_class == ParticleClass.DOT]
+    if rods_a or dots_a:
+        st.subheader("Approved size distributions")
+        st.caption(
+            "Bars touch (continuous size). Log-normal geometric mean is preferred over "
+            "arithmetic mean for nanoparticle sizes (Aviles & Lear)."
+        )
+        import plotly.express as px
+
+        hist_cols = st.columns(2 if (rods_a and dots_a) else 1)
+        col_i = 0
+        if rods_a:
+            with hist_cols[col_i]:
+                df_r = pd.DataFrame(
+                    {
+                        "Feret max (nm)": [p.feret_max_nm for p in rods_a],
+                        "Ellipse length (nm)": [p.length_nm for p in rods_a],
+                        "Circularity": [p.circularity for p in rods_a],
+                    }
+                )
+                fig_r = px.histogram(
+                    df_r,
+                    x="Feret max (nm)",
+                    nbins=min(30, max(8, len(rods_a) // 2)),
+                    title=f"Rods — Feret max (n={len(rods_a)})",
+                )
+                fig_r.update_layout(bargap=0, height=280, margin=dict(t=40, b=20))
+                st.plotly_chart(fig_r, use_container_width=True)
+                if "mean_rod_circularity" in stats:
+                    st.caption(f"Mean circularity: {stats['mean_rod_circularity']:.3f}")
+            col_i += 1
+        if dots_a:
+            with hist_cols[col_i if rods_a and dots_a else 0]:
+                df_d = pd.DataFrame(
+                    {
+                        "Diameter (nm)": [
+                            p.equiv_diameter_nm
+                            if p.equiv_diameter_nm > 0
+                            else 0.5 * (p.length_nm + p.width_nm)
+                            for p in dots_a
+                        ]
+                    }
+                )
+                fig_d = px.histogram(
+                    df_d,
+                    x="Diameter (nm)",
+                    nbins=min(30, max(8, len(dots_a) // 2)),
+                    title=f"Dots — equiv. diameter (n={len(dots_a)})",
+                )
+                fig_d.update_layout(bargap=0, height=280, margin=dict(t=40, b=20))
+                st.plotly_chart(fig_d, use_container_width=True)
+                if "mean_dot_circularity" in stats:
+                    st.caption(f"Mean circularity: {stats['mean_dot_circularity']:.3f}")
 
     if st.session_state.add_message:
         st.success(st.session_state.add_message)
@@ -606,7 +712,9 @@ if st.session_state.analysis_done and st.session_state.particles:
     st.subheader("Particle list")
     st.caption(
         "Uncheck **approved** to discard. "
-        "Use **Add missed particle** mode above to click particles the auto-detect missed."
+        "**length/width** = ellipse axes; **Feret** = caliper diameters; "
+        "**equiv_diameter** = 2√(A/π); **circularity** = 4πA/P². "
+        "Use **Add missed particle** mode above for missed detections."
     )
     table = pd.DataFrame(particles_to_rows(particles, approved_ids))
     edited = st.data_editor(

@@ -71,12 +71,19 @@ def test_summarize_approved():
 
 def test_summarize_dots_reports_diameter():
     particles = [
-        ParticleMeasurement(1, ParticleClass.DOT, 10.0, 8.0, 1.25, 0.2, 50.0, 0, 0, 5, 4, 20),
-        ParticleMeasurement(2, ParticleClass.DOT, 12.0, 12.0, 1.0, 0.1, 60.0, 0, 0, 6, 6, 25),
+        ParticleMeasurement(
+            1, ParticleClass.DOT, 10.0, 8.0, 1.25, 0.2, 50.0, 0, 0, 5, 4, 20,
+            equiv_diameter_nm=9.0,
+        ),
+        ParticleMeasurement(
+            2, ParticleClass.DOT, 12.0, 12.0, 1.0, 0.1, 60.0, 0, 0, 6, 6, 25,
+            equiv_diameter_nm=12.0,
+        ),
     ]
     stats = summarize_approved(particles, {1, 2})
     assert stats["approved_dots"] == 2
-    assert stats["mean_dot_diameter_nm"] == 10.5  # (9+12)/2
+    assert stats["mean_dot_diameter_nm"] == 10.5
+    assert stats["mean_dot_equiv_diameter_nm"] == 10.5
 
 
 def test_filter_approved_by_length():

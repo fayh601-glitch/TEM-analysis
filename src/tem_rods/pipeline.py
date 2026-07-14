@@ -240,13 +240,20 @@ def _write_csv(result: AnalysisResult) -> None:
         {
             "particle_id": p.particle_id,
             "class": p.particle_class.value,
-            "length_nm": round(p.length_nm, 2),
-            "width_nm": round(p.width_nm, 2),
+            "length_nm_ellipse": round(p.length_nm, 2),
+            "width_nm_ellipse": round(p.width_nm, 2),
+            "feret_max_nm": round(p.feret_max_nm, 2),
+            "feret_min_nm": round(p.feret_min_nm, 2),
+            "equiv_diameter_nm": round(p.equiv_diameter_nm, 2),
+            "circularity": round(p.circularity, 3),
             "aspect_ratio": round(p.aspect_ratio, 3),
             "eccentricity": round(p.eccentricity, 3),
             "area_nm2": round(p.area_nm2, 2),
             "centroid_x": round(p.centroid_x, 1),
             "centroid_y": round(p.centroid_y, 1),
+            # Legacy aliases (same as ellipse axes)
+            "length_nm": round(p.length_nm, 2),
+            "width_nm": round(p.width_nm, 2),
         }
         for p in result.particles
         if _particle_is_drawn(p, result)
@@ -433,18 +440,38 @@ def print_summary(result: AnalysisResult) -> None:
 
     if rod_stats["count"] > 0:
         print(
-            f"  Rod mean length: {rod_stats['mean_length_nm']:.1f} ± "
+            f"  Rod mean length (ellipse): {rod_stats['mean_length_nm']:.1f} ± "
             f"{rod_stats['std_length_nm']:.1f} nm"
         )
         print(
-            f"  Rod mean width:  {rod_stats['mean_width_nm']:.1f} ± "
+            f"  Rod mean width (ellipse):  {rod_stats['mean_width_nm']:.1f} ± "
             f"{rod_stats['std_width_nm']:.1f} nm"
         )
+        print(
+            f"  Rod mean Feret max/min:    {rod_stats['mean_feret_max_nm']:.1f} / "
+            f"{rod_stats['mean_feret_min_nm']:.1f} nm"
+        )
+        if not np.isnan(rod_stats.get("lognormal_feret_max_nm", float("nan"))):
+            print(
+                f"  Rod Feret max (log-normal geom.): "
+                f"{rod_stats['lognormal_feret_max_nm']:.1f} ± "
+                f"{rod_stats['lognormal_feret_max_se_nm']:.1f} nm"
+            )
+        print(f"  Rod mean circularity:     {rod_stats['mean_circularity']:.3f}")
     if dot_stats["count"] > 0:
         print(
-            f"  Dot mean diameter (major axis): {dot_stats['mean_length_nm']:.1f} ± "
-            f"{dot_stats['std_length_nm']:.1f} nm"
+            f"  Dot mean equiv. diameter:  {dot_stats['mean_equiv_diameter_nm']:.1f} nm"
         )
+        print(
+            f"  Dot mean Feret max:        {dot_stats['mean_feret_max_nm']:.1f} nm"
+        )
+        if not np.isnan(dot_stats.get("lognormal_equiv_diameter_nm", float("nan"))):
+            print(
+                f"  Dot diam. (log-normal geom.): "
+                f"{dot_stats['lognormal_equiv_diameter_nm']:.1f} ± "
+                f"{dot_stats['lognormal_equiv_diameter_se_nm']:.1f} nm"
+            )
+        print(f"  Dot mean circularity:     {dot_stats['mean_circularity']:.3f}")
 
     if result.csv_path:
         print(f"\nCSV: {result.csv_path}")

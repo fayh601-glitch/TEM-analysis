@@ -92,11 +92,19 @@ class AnalysisConfig:
 
 @dataclass
 class ParticleMeasurement:
+    """
+    Per-particle size and shape.
+
+    ``length_nm`` / ``width_nm`` are ellipse major / minor axes (how the overlay
+    is drawn). Prefer Feret diameters and equiv. diameter for size reporting
+    when comparing to Aviles & Lear–style TEM analysis.
+    """
+
     particle_id: int
     particle_class: ParticleClass
-    length_nm: float
-    width_nm: float
-    aspect_ratio: float
+    length_nm: float  # ellipse major axis (nm)
+    width_nm: float  # ellipse minor axis (nm)
+    aspect_ratio: float  # ellipse major / minor
     eccentricity: float
     area_nm2: float
     centroid_y: float
@@ -104,6 +112,11 @@ class ParticleMeasurement:
     length_px: float
     width_px: float
     area_px: int
+    # Aviles & Lear metrics (defaults keep older constructors working)
+    feret_max_nm: float = 0.0  # maximum caliper diameter
+    feret_min_nm: float = 0.0  # minimum caliper diameter
+    circularity: float = 0.0  # 4πA/P² (1 = circle)
+    equiv_diameter_nm: float = 0.0  # 2√(A/π) from projected area
 
 
 @dataclass

@@ -14,6 +14,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from skimage.measure import find_contours, regionprops
 
+from tem_rods.distributions import fit_lognormal, sample_size_note
+from tem_rods.measure import measure_from_region
 from tem_rods.models import ParticleClass, ParticleMeasurement
 
 
@@ -68,8 +70,12 @@ def particles_to_rows(
             {
                 "particle_id": p.particle_id,
                 "class": p.particle_class.value,
-                "length_nm": round(p.length_nm, 2),
-                "width_nm": round(p.width_nm, 2),
+                "length_nm (ellipse)": round(p.length_nm, 2),
+                "width_nm (ellipse)": round(p.width_nm, 2),
+                "feret_max_nm": round(p.feret_max_nm, 2),
+                "feret_min_nm": round(p.feret_min_nm, 2),
+                "equiv_diameter_nm": round(p.equiv_diameter_nm, 2),
+                "circularity": round(p.circularity, 3),
                 "aspect_ratio": round(p.aspect_ratio, 2),
                 "approved": p.particle_id in approved_ids,
                 "centroid_x": round(p.centroid_x, 1),
@@ -89,26 +95,59 @@ def filter_particles(
 def summarize_approved(
     particles: list[ParticleMeasurement],
     approved_ids: set[int],
-) -> dict[str, float | int]:
+) -> dict[str, float | int | str | None]:
     kept = filter_particles(particles, approved_ids)
     rods = [p for p in kept if p.particle_class == ParticleClass.ROD]
     dots = [p for p in kept if p.particle_class == ParticleClass.DOT]
-    out: dict[str, float | int] = {
+    out: dict[str, float | int | str | None] = {
         "approved_count": len(kept),
         "approved_rods": len(rods),
         "approved_dots": len(dots),
         "discarded_count": len(particles) - len(kept),
+        "sample_size_note": sample_size_note(len(kept)),
     }
     if rods:
         out["mean_rod_length_nm"] = round(sum(p.length_nm for p in rods) / len(rods), 2)
         out["mean_rod_width_nm"] = round(sum(p.width_nm for p in rods) / len(rods), 2)
+        out["mean_rod_feret_max_nm"] = round(
+            sum(p.feret_max_nm for p in rods) / len(rods), 2
+        )
+        out["mean_rod_feret_min_nm"] = round(
+            sum(p.feret_min_nm for p in rods) / len(rods), 2
+        )
+        out["mean_rod_circularity"] = round(
+            sum(p.circularity for p in rods) / len(rods), 3
+        )
+        fit_len = fit_lognormal([p.length_nm for p in rods])
+        fit_feret = fit_lognormal([p.feret_max_nm for p in rods if p.feret_max_nm > 0])
+        if fit_len is not None:
+            out["lognormal_rod_length_nm"] = round(fit_len.geometric_mean, 2)
+            out["lognormal_rod_length_se_nm"] = round(fit_len.geometric_mean_se, 2)
+        if fit_feret is not None:
+            out["lognormal_rod_feret_max_nm"] = round(fit_feret.geometric_mean, 2)
+            out["lognormal_rod_feret_max_se_nm"] = round(fit_feret.geometric_mean_se, 2)
     if dots:
         out["mean_dot_length_nm"] = round(sum(p.length_nm for p in dots) / len(dots), 2)
         out["mean_dot_width_nm"] = round(sum(p.width_nm for p in dots) / len(dots), 2)
-        # For roughly round particles, diameter ≈ average of the two ellipse axes.
-        out["mean_dot_diameter_nm"] = round(
-            sum(0.5 * (p.length_nm + p.width_nm) for p in dots) / len(dots), 2
+        out["mean_dot_equiv_diameter_nm"] = round(
+            sum(p.equiv_diameter_nm for p in dots) / len(dots), 2
         )
+        out["mean_dot_feret_max_nm"] = round(
+            sum(p.feret_max_nm for p in dots) / len(dots), 2
+        )
+        out["mean_dot_circularity"] = round(
+            sum(p.circularity for p in dots) / len(dots), 3
+        )
+        # Prefer area-equivalent diameter; fall back to axis average for legacy rows.
+        diameters = [
+            p.equiv_diameter_nm if p.equiv_diameter_nm > 0 else 0.5 * (p.length_nm + p.width_nm)
+            for p in dots
+        ]
+        out["mean_dot_diameter_nm"] = round(sum(diameters) / len(diameters), 2)
+        fit_d = fit_lognormal(diameters)
+        if fit_d is not None:
+            out["lognormal_dot_diameter_nm"] = round(fit_d.geometric_mean, 2)
+            out["lognormal_dot_diameter_se_nm"] = round(fit_d.geometric_mean_se, 2)
     return out
 
 
@@ -211,7 +250,9 @@ def build_review_figure(
             status = "approved" if approved else "discarded"
             texts.append(
                 f"#{p.particle_id} {p.particle_class.value}<br>"
-                f"{p.length_nm:.1f}×{p.width_nm:.1f} nm<br>"
+                f"ellipse {p.length_nm:.1f}×{p.width_nm:.1f} nm<br>"
+                f"Feret {p.feret_max_nm:.1f}/{p.feret_min_nm:.1f} nm · "
+                f"circ {p.circularity:.2f}<br>"
                 f"<b>{status}</b> — click to toggle"
             )
             custom.append(p.particle_id)
@@ -288,23 +329,11 @@ def _measure_region(
     nm_per_pixel: float,
     forced_class: ParticleClass,
 ) -> ParticleMeasurement:
-    length_px = float(region.major_axis_length)
-    width_px = float(region.minor_axis_length)
-    if width_px <= 0:
-        width_px = 1e-6
-    return ParticleMeasurement(
+    return measure_from_region(
+        region,
         particle_id=particle_id,
+        nm_per_pixel=nm_per_pixel,
         particle_class=forced_class,
-        length_nm=length_px * nm_per_pixel,
-        width_nm=width_px * nm_per_pixel,
-        aspect_ratio=length_px / width_px,
-        eccentricity=float(region.eccentricity),
-        area_nm2=int(region.area) * (nm_per_pixel**2),
-        centroid_y=float(region.centroid[0]),
-        centroid_x=float(region.centroid[1]),
-        length_px=length_px,
-        width_px=width_px,
-        area_px=int(region.area),
     )
 
 
@@ -361,6 +390,10 @@ def add_particle_at_click(
                                 length_px=item.length_px,
                                 width_px=item.width_px,
                                 area_px=item.area_px,
+                                feret_max_nm=item.feret_max_nm,
+                                feret_min_nm=item.feret_min_nm,
+                                circularity=item.circularity,
+                                equiv_diameter_nm=item.equiv_diameter_nm,
                             )
                         )
                     else:
