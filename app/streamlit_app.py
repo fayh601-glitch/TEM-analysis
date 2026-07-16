@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
-_APP_BUILD = "2026-07-16-freehand-trace-1"
+_APP_BUILD = "2026-07-16-freehand-canvas-patch-1"
 for _mod in list(sys.modules):
     if _mod == "tem_rods" or _mod.startswith("tem_rods."):
         del sys.modules[_mod]
@@ -304,6 +304,39 @@ def _as_float_gray(image: np.ndarray) -> np.ndarray:
     return gray
 
 
+def _patch_drawable_canvas_for_new_streamlit() -> None:
+    """
+    streamlit-drawable-canvas 0.9.3 calls streamlit.elements.image.image_to_url,
+    which was moved in Streamlit ≥1.41. Restore it before importing the canvas.
+    """
+    import streamlit.elements.image as st_image
+
+    if hasattr(st_image, "image_to_url"):
+        return
+    try:
+        from streamlit.elements.lib.image_utils import image_to_url as _image_to_url
+
+        st_image.image_to_url = _image_to_url  # type: ignore[attr-defined]
+        return
+    except Exception:
+        pass
+
+    import base64
+    from io import BytesIO
+
+    def image_to_url(image, width, clamp, channels, output_format, image_id):  # noqa: ARG001
+        if not isinstance(image, PILImage.Image):
+            image = PILImage.fromarray(np.asarray(image))
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        buf = BytesIO()
+        image.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{b64}"
+
+    st_image.image_to_url = image_to_url  # type: ignore[attr-defined]
+
+
 def _render_trace_and_match_tab() -> None:
     """Freehand-trace one particle outline, then find similarly shaped particles."""
     st.subheader("Trace one particle → find similar shapes")
@@ -390,6 +423,7 @@ def _render_trace_and_match_tab() -> None:
         return
 
     try:
+        _patch_drawable_canvas_for_new_streamlit()
         from streamlit_drawable_canvas import st_canvas
     except ImportError:
         st.error(
