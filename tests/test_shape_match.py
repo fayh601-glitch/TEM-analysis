@@ -11,6 +11,7 @@ from tem_rods.shape_match import (
     find_similar_in_labels,
     polygon_to_mask,
     shape_distance,
+    stroke_image_to_mask,
 )
 
 
@@ -61,3 +62,16 @@ def test_find_similar_prefers_rods_over_dot():
     assert len(matches) >= 1
     # At least one match should be elongated (aspect from features)
     assert any(m.features.aspect_ratio > 1.5 for m in matches)
+
+
+def test_stroke_image_to_mask_fills_closed_loop():
+    h, w = 80, 100
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    # Draw a hollow rectangle stroke in alpha
+    rgba[20:60, 20:25, 3] = 255
+    rgba[20:60, 70:75, 3] = 255
+    rgba[20:25, 20:75, 3] = 255
+    rgba[55:60, 20:75, 3] = 255
+    mask = stroke_image_to_mask(rgba, (h, w), close_radius=2)
+    assert mask.sum() > 500
+    assert mask[40, 45]  # interior should be filled

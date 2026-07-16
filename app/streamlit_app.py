@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
-_APP_BUILD = "2026-07-16-shape-match-1"
+_APP_BUILD = "2026-07-16-freehand-trace-1"
 for _mod in list(sys.modules):
     if _mod == "tem_rods" or _mod.startswith("tem_rods."):
         del sys.modules[_mod]
@@ -60,8 +60,10 @@ from tem_rods.shape_match import (  # noqa: E402
     find_similar_in_labels,
     polygon_to_mask,
     render_trace_overlay,
+    stroke_image_to_mask,
 )
 from skimage.measure import regionprops  # noqa: E402
+from PIL import Image as PILImage  # noqa: E402
 
 st.set_page_config(
     page_title="Python Based Geometric Analysis for TEM Images",
@@ -304,11 +306,11 @@ def _as_float_gray(image: np.ndarray) -> np.ndarray:
 
 
 def _render_trace_and_match_tab() -> None:
-    """Trace one particle outline, then find similarly shaped particles."""
+    """Freehand-trace one particle outline, then find similarly shaped particles."""
     st.subheader("Trace one particle → find similar shapes")
     st.caption(
-        "Click points around the **edge** of one particle (clockwise or counterclockwise). "
-        "When the outline is closed enough (≥ 6 points), click **Find similar particles**. "
+        "Hold the mouse button and **draw a closed loop** around one particle. "
+        "Then click **Find similar particles**. "
         "The app segments the image and keeps blobs whose shape matches your tracing."
     )
 
@@ -340,6 +342,13 @@ def _render_trace_and_match_tab() -> None:
         help="Maximum shape-distance score to count as a match.",
         key="trace_max_score",
     )
+    stroke_width = st.slider(
+        "Brush thickness",
+        min_value=1,
+        max_value=8,
+        value=3,
+        key="trace_brush",
+    )
 
     uploaded = st.file_uploader(
         "Upload TEM image for shape matching",
@@ -358,15 +367,16 @@ def _render_trace_and_match_tab() -> None:
         image = load_grayscale(image_path)
         st.session_state.shape_match_image = image
         st.session_state.shape_match_image_path = str(image_path)
-        # New upload clears previous trace.
         if st.session_state.get("trace_upload_name") != uploaded.name:
             st.session_state.trace_upload_name = uploaded.name
-            st.session_state.trace_points = []
             st.session_state.shape_match_ids = set()
             st.session_state.shape_match_labels = None
             st.session_state.shape_match_scores = {}
             st.session_state.shape_match_particles = None
             st.session_state.shape_match_message = None
+            st.session_state.trace_canvas_nonce = (
+                st.session_state.get("trace_canvas_nonce", 0) + 1
+            )
     elif st.session_state.get("shape_match_image") is not None:
         image = st.session_state.shape_match_image
         if st.session_state.get("shape_match_image_path"):
@@ -380,82 +390,77 @@ def _render_trace_and_match_tab() -> None:
         st.warning("Upload a TEM image (or run Auto detect first) to start tracing.")
         return
 
+    try:
+        from streamlit_drawable_canvas import st_canvas
+    except ImportError:
+        st.error(
+            "Missing package `streamlit-drawable-canvas`. "
+            "Install with: pip install streamlit-drawable-canvas"
+        )
+        return
+
     gray = _as_float_gray(image)
-    points: list[tuple[float, float]] = list(st.session_state.trace_points or [])
+    h, w = gray.shape[:2]
+    rgb = (np.stack([gray, gray, gray], axis=-1) * 255).astype(np.uint8)
+
+    # Draw matches on the background so the canvas stays freehand-only.
     matched_ids: set[int] = set(st.session_state.shape_match_ids or set())
     match_labels = st.session_state.shape_match_labels
-
-    template_mask = None
-    if len(points) >= 3:
-        try:
-            template_mask = polygon_to_mask(points, gray.shape[:2])
-        except ValueError:
-            template_mask = None
-
-    overlay = render_trace_overlay(
-        gray,
-        points,
-        match_labels=match_labels,
-        matched_ids=matched_ids,
-        template_mask=template_mask,
-    )
-
-    b1, b2, b3, b4 = st.columns(4)
-    with b1:
-        undo = st.button("Undo last point", disabled=len(points) == 0)
-    with b2:
-        clear = st.button("Clear outline")
-    with b3:
-        find = st.button(
-            "Find similar particles",
-            type="primary",
-            disabled=len(points) < 6,
+    if match_labels is not None and matched_ids:
+        bg_arr = render_trace_overlay(
+            gray,
+            [],
+            match_labels=match_labels,
+            matched_ids=matched_ids,
+            template_mask=None,
         )
-    with b4:
-        st.caption(f"{len(points)} outline points")
+    else:
+        bg_arr = rgb
 
-    if undo:
-        st.session_state.trace_points = points[:-1]
-        st.rerun()
+    bg_pil = PILImage.fromarray(bg_arr)
+    max_canvas_w = 900
+    display_scale = min(1.0, max_canvas_w / float(w))
+    canvas_w = max(1, int(round(w * display_scale)))
+    canvas_h = max(1, int(round(h * display_scale)))
+    bg_display = bg_pil.resize((canvas_w, canvas_h), getattr(PILImage, "Resampling", PILImage).BILINEAR)
+
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        clear = st.button("Clear drawing")
+        find = st.button("Find similar particles", type="primary")
+    with c2:
+        st.caption(
+            "Drawing mode: **freehand**. Close the loop around the particle as best you can."
+        )
+
     if clear:
-        st.session_state.trace_points = []
         st.session_state.shape_match_ids = set()
         st.session_state.shape_match_labels = None
         st.session_state.shape_match_scores = {}
         st.session_state.shape_match_particles = None
         st.session_state.shape_match_message = None
-        st.session_state.trace_last_click = None
+        st.session_state.trace_canvas_nonce = (
+            st.session_state.get("trace_canvas_nonce", 0) + 1
+        )
         st.rerun()
 
-    try:
-        from streamlit_image_coordinates import streamlit_image_coordinates
-    except ImportError:
-        st.error(
-            "Missing package `streamlit-image-coordinates`. "
-            "Install with: pip install streamlit-image-coordinates"
-        )
-        return
-
-    click = streamlit_image_coordinates(
-        overlay,
-        key=f"trace_click_{st.session_state.get('plot_nonce', 0)}",
+    canvas = st_canvas(
+        fill_color="rgba(0, 0, 0, 0)",
+        stroke_width=int(stroke_width),
+        stroke_color="#ff3333",
+        background_image=bg_display,
+        update_streamlit=True,
+        height=canvas_h,
+        width=canvas_w,
+        drawing_mode="freedraw",
+        key=f"trace_canvas_{st.session_state.get('trace_canvas_nonce', 0)}",
+        display_toolbar=True,
     )
-    if click and "x" in click and "y" in click:
-        click_key = (int(click["x"]), int(click["y"]))
-        if click_key != st.session_state.trace_last_click:
-            pts = list(st.session_state.trace_points or [])
-            pts.append((float(click["x"]), float(click["y"])))
-            st.session_state.trace_points = pts
-            st.session_state.trace_last_click = click_key
-            st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
-            st.rerun()
 
     if find:
-        if len(points) < 6:
-            st.error("Trace at least 6 points around the particle edge.")
-            return
+        stroke = None if canvas is None else canvas.image_data
         try:
-            template_mask = polygon_to_mask(points, gray.shape[:2])
+            template_mask = stroke_image_to_mask(stroke, (h, w))
         except ValueError as exc:
             st.error(str(exc))
             return
@@ -477,7 +482,6 @@ def _render_trace_and_match_tab() -> None:
         matched_ids = {m.label_id for m in matches}
         scores = {m.label_id: m.score for m in matches}
 
-        # Calibrate nm/px if possible (auto scale bar); fall back to session or 1.
         nm_pp = float(st.session_state.nm_per_pixel or 0.0)
         calib_note = None
         if nm_pp <= 0 and image_path is not None:
@@ -521,12 +525,12 @@ def _render_trace_and_match_tab() -> None:
         st.session_state.shape_match_scores = scores
         st.session_state.shape_match_particles = _particles_to_dicts(particles)
         st.session_state.nm_per_pixel = nm_pp
+        st.session_state.shape_match_template_mask = template_mask
         st.session_state.shape_match_message = (
             f"Found {len(matches)} similar particle(s) "
             f"(tolerance ≤ {max_score:.2f})."
             + (f" {calib_note}" if calib_note else "")
         )
-        st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
         st.rerun()
 
     if st.session_state.shape_match_message:
@@ -545,8 +549,12 @@ def _render_trace_and_match_tab() -> None:
                     "similarity_score": round(float(scores.get(p.particle_id, 0.0)), 3),
                     "length_nm": round(p.length_nm, 2),
                     "width_nm": round(p.width_nm, 2),
-                    "feret_max_nm": round(float(getattr(p, "feret_max_nm", 0.0) or 0.0), 2),
-                    "circularity": round(float(getattr(p, "circularity", 0.0) or 0.0), 3),
+                    "feret_max_nm": round(
+                        float(getattr(p, "feret_max_nm", 0.0) or 0.0), 2
+                    ),
+                    "circularity": round(
+                        float(getattr(p, "circularity", 0.0) or 0.0), 3
+                    ),
                     "aspect_ratio": round(p.aspect_ratio, 2),
                 }
             )
@@ -601,7 +609,7 @@ if workspace == "Trace & find similar":
     _render_trace_and_match_tab()
     st.markdown("---")
     st.markdown(
-        "Cyan = your traced outline · green = similar matches · red dots = click points  \n"
+        "Draw a closed freehand loop around one particle · green = similar matches  \n"
         "Repo: [github.com/fayh601-glitch/TEM-analysis](https://github.com/fayh601-glitch/TEM-analysis)"
     )
     st.stop()

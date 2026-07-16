@@ -165,6 +165,91 @@ def find_similar_in_labels(
     return template, matches
 
 
+def stroke_image_to_mask(
+    stroke_rgba: np.ndarray,
+    target_shape: tuple[int, int],
+    *,
+    alpha_threshold: int = 10,
+    close_radius: int = 4,
+) -> np.ndarray:
+    """
+    Convert a freehand canvas stroke (RGBA) into a filled boolean mask.
+
+    Resizes the stroke to ``target_shape`` (row, col), closes small gaps, and
+    flood-fills the interior so a drawn outline becomes a solid particle template.
+    """
+    from scipy import ndimage as ndi
+    from skimage.morphology import binary_closing, disk
+    from skimage.transform import resize
+
+    if stroke_rgba is None or stroke_rgba.size == 0:
+        raise ValueError("No drawing found — drag the mouse around a particle first.")
+
+    if stroke_rgba.ndim == 3 and stroke_rgba.shape[2] >= 4:
+        stroke = stroke_rgba[:, :, 3] > alpha_threshold
+    elif stroke_rgba.ndim == 3:
+        stroke = stroke_rgba.max(axis=2) > alpha_threshold
+    else:
+        stroke = stroke_rgba > alpha_threshold
+
+    if not stroke.any():
+        raise ValueError("No drawing found — drag the mouse around a particle first.")
+
+    stroke_full = resize(
+        stroke.astype(float),
+        target_shape,
+        order=0,
+        preserve_range=True,
+        anti_aliasing=False,
+    ) > 0.5
+    if close_radius > 0:
+        stroke_full = binary_closing(stroke_full, disk(close_radius))
+    filled = ndi.binary_fill_holes(stroke_full)
+    # If the loop was not closed, fill_holes barely expands — use convex hull fallback.
+    if filled.sum() <= stroke_full.sum() * 1.15:
+        from skimage.morphology import convex_hull_image
+
+        filled = convex_hull_image(stroke_full)
+    if not filled.any():
+        raise ValueError("Could not turn the stroke into a closed outline. Try again.")
+    return filled.astype(bool)
+
+
+def fabric_paths_to_points(
+    json_data: dict | None,
+    *,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+) -> list[tuple[float, float]]:
+    """Extract ordered (x, y) points from streamlit-drawable-canvas JSON."""
+    if not json_data or "objects" not in json_data:
+        return []
+    points: list[tuple[float, float]] = []
+    for obj in json_data.get("objects", []):
+        left = float(obj.get("left", 0.0))
+        top = float(obj.get("top", 0.0))
+        sx = float(obj.get("scaleX", 1.0))
+        sy = float(obj.get("scaleY", 1.0))
+        path = obj.get("path")
+        if path:
+            for cmd in path:
+                if not cmd:
+                    continue
+                op = cmd[0]
+                if op in ("M", "L") and len(cmd) >= 3:
+                    points.append(((left + cmd[1] * sx) * scale_x, (top + cmd[2] * sy) * scale_y))
+                elif op == "Q" and len(cmd) >= 5:
+                    points.append(((left + cmd[3] * sx) * scale_x, (top + cmd[4] * sy) * scale_y))
+                elif op == "C" and len(cmd) >= 7:
+                    points.append(((left + cmd[5] * sx) * scale_x, (top + cmd[6] * sy) * scale_y))
+        raw_pts = obj.get("points")
+        if raw_pts:
+            for p in raw_pts:
+                if isinstance(p, dict):
+                    points.append(((left + float(p["x"]) * sx) * scale_x, (top + float(p["y"]) * sy) * scale_y))
+    return points
+
+
 def render_trace_overlay(
     image: np.ndarray,
     points_xy: list[tuple[float, float]],
