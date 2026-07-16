@@ -58,7 +58,6 @@ from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar  # noqa: E402
 from tem_rods.segment import segment_particles_from_config  # noqa: E402
 from tem_rods.shape_match import (  # noqa: E402
     find_similar_in_labels,
-    polygon_to_mask,
     render_trace_overlay,
     stroke_image_to_mask,
 )
