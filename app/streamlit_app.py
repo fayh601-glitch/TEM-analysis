@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
-_APP_BUILD = "2026-07-14-feret-1"
+_APP_BUILD = "2026-07-16-shape-match-1"
 for _mod in list(sys.modules):
     if _mod == "tem_rods" or _mod.startswith("tem_rods."):
         del sys.modules[_mod]
@@ -49,10 +49,19 @@ from particle_review import (  # noqa: E402
     summarize_approved,
     toggle_particle,
 )
+from tem_rods.measure import measure_from_region  # noqa: E402
 from tem_rods.models import AnalysisMode, ParticleClass, ParticleMeasurement  # noqa: E402
 from tem_rods.pipeline import analyze_image  # noqa: E402
 from tem_rods.presets import PRESETS, get_preset  # noqa: E402
+from tem_rods.preprocess import preprocess  # noqa: E402
 from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar  # noqa: E402
+from tem_rods.segment import segment_particles_from_config  # noqa: E402
+from tem_rods.shape_match import (  # noqa: E402
+    find_similar_in_labels,
+    polygon_to_mask,
+    render_trace_overlay,
+)
+from skimage.measure import regionprops  # noqa: E402
 
 st.set_page_config(
     page_title="Python Based Geometric Analysis for TEM Images",
@@ -76,8 +85,8 @@ st.markdown(
 
 st.title("Python Based Geometric Analysis for TEM Images")
 st.caption(
-    "Upload a TEM image → choose rods or dots → enter the scale bar (nm) → "
-    "the app measures the bar in pixels → approve outlines → download results. "
+    "Choose a workspace: auto-detect particles, or trace one outline to find similar shapes. "
+    "Enter the scale bar (nm), approve outlines, download results. "
     "Reference: Enright et al. 2018."
 )
 
@@ -98,6 +107,15 @@ def _init_session() -> None:
         "analysis_mode": AnalysisMode.RODS.value,
         "add_message": None,
         "last_add_click": None,
+        "show_feret_histogram": False,
+        "trace_points": [],
+        "trace_last_click": None,
+        "shape_match_ids": set(),
+        "shape_match_labels": None,
+        "shape_match_scores": {},
+        "shape_match_image": None,
+        "shape_match_message": None,
+        "shape_match_particles": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -275,9 +293,318 @@ def _default_preset_for_mode(mode: AnalysisMode) -> str:
     return "enright_rods"
 
 
+def _as_float_gray(image: np.ndarray) -> np.ndarray:
+    if image.ndim == 3:
+        gray = image.astype(np.float64).mean(axis=2)
+    else:
+        gray = image.astype(np.float64)
+    if gray.max() > 1.5:
+        gray = gray / 255.0
+    return gray
+
+
+def _render_trace_and_match_tab() -> None:
+    """Trace one particle outline, then find similarly shaped particles."""
+    st.subheader("Trace one particle → find similar shapes")
+    st.caption(
+        "Click points around the **edge** of one particle (clockwise or counterclockwise). "
+        "When the outline is closed enough (≥ 6 points), click **Find similar particles**. "
+        "The app segments the image and keeps blobs whose shape matches your tracing."
+    )
+
+    scale_nm = st.number_input(
+        "Scale bar length (nm)",
+        min_value=1.0,
+        value=float(st.session_state.get("trace_scale_nm", 50.0)),
+        step=1.0,
+        key="trace_scale_nm",
+    )
+    preset_names = sorted(PRESETS.keys())
+    default_preset = (
+        "dense_rods_50nm" if "dense_rods_50nm" in PRESETS else "enright_rods"
+    )
+    preset_name = st.selectbox(
+        "Segmentation preset",
+        preset_names,
+        index=preset_names.index(default_preset)
+        if default_preset in preset_names
+        else 0,
+        key="trace_preset",
+    )
+    max_score = st.slider(
+        "Similarity tolerance (lower = stricter)",
+        min_value=0.10,
+        max_value=0.80,
+        value=0.35,
+        step=0.05,
+        help="Maximum shape-distance score to count as a match.",
+        key="trace_max_score",
+    )
+
+    uploaded = st.file_uploader(
+        "Upload TEM image for shape matching",
+        type=["png", "jpg", "jpeg", "tif", "tiff"],
+        key="trace_uploader",
+    )
+
+    image = None
+    image_path: Path | None = None
+    if uploaded is not None:
+        from tem_rods.io import load_grayscale
+
+        session_dir = _ensure_session_dir()
+        image_path = session_dir / f"trace_{uploaded.name}"
+        image_path.write_bytes(uploaded.getvalue())
+        image = load_grayscale(image_path)
+        st.session_state.shape_match_image = image
+        st.session_state.shape_match_image_path = str(image_path)
+        # New upload clears previous trace.
+        if st.session_state.get("trace_upload_name") != uploaded.name:
+            st.session_state.trace_upload_name = uploaded.name
+            st.session_state.trace_points = []
+            st.session_state.shape_match_ids = set()
+            st.session_state.shape_match_labels = None
+            st.session_state.shape_match_scores = {}
+            st.session_state.shape_match_particles = None
+            st.session_state.shape_match_message = None
+    elif st.session_state.get("shape_match_image") is not None:
+        image = st.session_state.shape_match_image
+        if st.session_state.get("shape_match_image_path"):
+            image_path = Path(st.session_state.shape_match_image_path)
+    elif st.session_state.get("image") is not None:
+        image = st.session_state.image
+        st.session_state.shape_match_image = image
+        st.info("Using the image from Auto detect & review.")
+
+    if image is None:
+        st.warning("Upload a TEM image (or run Auto detect first) to start tracing.")
+        return
+
+    gray = _as_float_gray(image)
+    points: list[tuple[float, float]] = list(st.session_state.trace_points or [])
+    matched_ids: set[int] = set(st.session_state.shape_match_ids or set())
+    match_labels = st.session_state.shape_match_labels
+
+    template_mask = None
+    if len(points) >= 3:
+        try:
+            template_mask = polygon_to_mask(points, gray.shape[:2])
+        except ValueError:
+            template_mask = None
+
+    overlay = render_trace_overlay(
+        gray,
+        points,
+        match_labels=match_labels,
+        matched_ids=matched_ids,
+        template_mask=template_mask,
+    )
+
+    b1, b2, b3, b4 = st.columns(4)
+    with b1:
+        undo = st.button("Undo last point", disabled=len(points) == 0)
+    with b2:
+        clear = st.button("Clear outline")
+    with b3:
+        find = st.button(
+            "Find similar particles",
+            type="primary",
+            disabled=len(points) < 6,
+        )
+    with b4:
+        st.caption(f"{len(points)} outline points")
+
+    if undo:
+        st.session_state.trace_points = points[:-1]
+        st.rerun()
+    if clear:
+        st.session_state.trace_points = []
+        st.session_state.shape_match_ids = set()
+        st.session_state.shape_match_labels = None
+        st.session_state.shape_match_scores = {}
+        st.session_state.shape_match_particles = None
+        st.session_state.shape_match_message = None
+        st.session_state.trace_last_click = None
+        st.rerun()
+
+    try:
+        from streamlit_image_coordinates import streamlit_image_coordinates
+    except ImportError:
+        st.error(
+            "Missing package `streamlit-image-coordinates`. "
+            "Install with: pip install streamlit-image-coordinates"
+        )
+        return
+
+    click = streamlit_image_coordinates(
+        overlay,
+        key=f"trace_click_{st.session_state.get('plot_nonce', 0)}",
+    )
+    if click and "x" in click and "y" in click:
+        click_key = (int(click["x"]), int(click["y"]))
+        if click_key != st.session_state.trace_last_click:
+            pts = list(st.session_state.trace_points or [])
+            pts.append((float(click["x"]), float(click["y"])))
+            st.session_state.trace_points = pts
+            st.session_state.trace_last_click = click_key
+            st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
+            st.rerun()
+
+    if find:
+        if len(points) < 6:
+            st.error("Trace at least 6 points around the particle edge.")
+            return
+        try:
+            template_mask = polygon_to_mask(points, gray.shape[:2])
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+
+        preset = get_preset(preset_name)
+        cfg = replace(preset.config)
+        processed = preprocess(
+            gray,
+            gaussian_sigma=cfg.gaussian_sigma,
+            crop_margins=cfg.crop_margins,
+            use_clahe=cfg.use_clahe,
+        )
+        labels = segment_particles_from_config(processed, cfg)
+        _feat, matches = find_similar_in_labels(
+            labels,
+            template_mask,
+            max_score=float(max_score),
+        )
+        matched_ids = {m.label_id for m in matches}
+        scores = {m.label_id: m.score for m in matches}
+
+        # Calibrate nm/px if possible (auto scale bar); fall back to session or 1.
+        nm_pp = float(st.session_state.nm_per_pixel or 0.0)
+        calib_note = None
+        if nm_pp <= 0 and image_path is not None:
+            try:
+                sb = detect_scale_bar(image_path, scale_bar_nm=scale_nm)
+                nm_pp = float(sb.nm_per_pixel)
+                calib_note = (
+                    f"Scale bar auto: {scale_nm:g} nm / {sb.bar_pixels:.1f} px "
+                    f"→ {nm_pp:.4f} nm/px"
+                )
+            except Exception:
+                nm_pp = 1.0
+                calib_note = (
+                    "Could not auto-read scale bar — sizes use a 1 nm/px placeholder. "
+                    "Run Auto detect first for accurate nm calibration."
+                )
+        if nm_pp <= 0:
+            nm_pp = 1.0
+
+        preferred = (
+            ParticleClass.DOT
+            if "dot" in preset_name.lower()
+            else ParticleClass.ROD
+        )
+        st.session_state.shape_match_preferred_class = preferred.value
+        particles: list[ParticleMeasurement] = []
+        for region in regionprops(labels):
+            if region.label not in matched_ids:
+                continue
+            particles.append(
+                measure_from_region(
+                    region,
+                    particle_id=int(region.label),
+                    nm_per_pixel=nm_pp,
+                    particle_class=preferred,
+                )
+            )
+
+        st.session_state.shape_match_labels = labels
+        st.session_state.shape_match_ids = matched_ids
+        st.session_state.shape_match_scores = scores
+        st.session_state.shape_match_particles = _particles_to_dicts(particles)
+        st.session_state.nm_per_pixel = nm_pp
+        st.session_state.shape_match_message = (
+            f"Found {len(matches)} similar particle(s) "
+            f"(tolerance ≤ {max_score:.2f})."
+            + (f" {calib_note}" if calib_note else "")
+        )
+        st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
+        st.rerun()
+
+    if st.session_state.shape_match_message:
+        st.success(st.session_state.shape_match_message)
+
+    particles_rows = st.session_state.shape_match_particles
+    if particles_rows:
+        particles = _dicts_to_particles(particles_rows)
+        scores = st.session_state.shape_match_scores or {}
+        rows = []
+        for p in particles:
+            rows.append(
+                {
+                    "particle_id": p.particle_id,
+                    "class": p.particle_class.value,
+                    "similarity_score": round(float(scores.get(p.particle_id, 0.0)), 3),
+                    "length_nm": round(p.length_nm, 2),
+                    "width_nm": round(p.width_nm, 2),
+                    "feret_max_nm": round(float(getattr(p, "feret_max_nm", 0.0) or 0.0), 2),
+                    "circularity": round(float(getattr(p, "circularity", 0.0) or 0.0), 3),
+                    "aspect_ratio": round(p.aspect_ratio, 2),
+                }
+            )
+        table = pd.DataFrame(rows).sort_values("similarity_score")
+        st.dataframe(table, use_container_width=True, hide_index=True)
+        csv_bytes = table.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download matched particles CSV",
+            data=csv_bytes,
+            file_name="shape_match_particles.csv",
+            mime="text/csv",
+        )
+
+        if st.button("Send matches to Auto detect review"):
+            preferred_val = st.session_state.get(
+                "shape_match_preferred_class", AnalysisMode.RODS.value
+            )
+            try:
+                preferred_cls = ParticleClass(preferred_val)
+            except ValueError:
+                preferred_cls = ParticleClass.ROD
+            st.session_state.particles = _particles_to_dicts(particles)
+            st.session_state.labels = st.session_state.shape_match_labels
+            st.session_state.image = gray
+            st.session_state.approved_ids = {p.particle_id for p in particles}
+            st.session_state.analysis_done = True
+            st.session_state.stem = "shape_match"
+            st.session_state.analysis_mode = (
+                AnalysisMode.DOTS.value
+                if preferred_cls == ParticleClass.DOT
+                else AnalysisMode.RODS.value
+            )
+            st.session_state.add_message = (
+                f"Imported {len(particles)} shape-matched particles into review."
+            )
+            st.info("Switch to **Auto detect & review** to edit keep/discard.")
+            st.rerun()
+
+
 _init_session()
 
 SAMPLE_50NM = _REPO / "data" / "curated" / "user_rods_50nm_jul13.png"
+
+workspace = st.radio(
+    "Workspace",
+    options=["Auto detect & review", "Trace & find similar"],
+    horizontal=True,
+    help="Auto detect runs the full pipeline. Trace lets you outline one particle and find look-alikes.",
+)
+
+if workspace == "Trace & find similar":
+    _render_trace_and_match_tab()
+    st.markdown("---")
+    st.markdown(
+        "Cyan = your traced outline · green = similar matches · red dots = click points  \n"
+        "Repo: [github.com/fayh601-glitch/TEM-analysis](https://github.com/fayh601-glitch/TEM-analysis)"
+    )
+    st.stop()
 
 # --- Primary controls (always visible before analyze) ---
 st.subheader("1. Particle morphology")
@@ -577,62 +904,73 @@ if st.session_state.analysis_done and st.session_state.particles:
     if stats.get("sample_size_note"):
         st.info(stats["sample_size_note"])
 
-    # Size / morphology histograms for approved particles
+    # Size / morphology histograms (opt-in — Feret chart is off by default)
     approved_particles = [p for p in particles if p.particle_id in approved_ids]
     rods_a = [p for p in approved_particles if p.particle_class == ParticleClass.ROD]
     dots_a = [p for p in approved_particles if p.particle_class == ParticleClass.DOT]
     if rods_a or dots_a:
-        st.subheader("Approved size distributions")
-        st.caption(
-            "Bars touch (continuous size). Log-normal geometric mean is preferred over "
-            "arithmetic mean for nanoparticle sizes (Aviles & Lear)."
+        show_feret_hist = st.checkbox(
+            "Show Feret / size histogram",
+            value=bool(st.session_state.get("show_feret_histogram", False)),
+            help="Optional Aviles & Lear–style size distribution chart. Off by default.",
+            key="show_feret_histogram",
         )
-        import plotly.express as px
+        if show_feret_hist:
+            st.subheader("Approved size distributions")
+            st.caption(
+                "Bars touch (continuous size). Log-normal geometric mean is preferred over "
+                "arithmetic mean for nanoparticle sizes (Aviles & Lear)."
+            )
+            import plotly.express as px
 
-        hist_cols = st.columns(2 if (rods_a and dots_a) else 1)
-        col_i = 0
-        if rods_a:
-            with hist_cols[col_i]:
-                df_r = pd.DataFrame(
-                    {
-                        "Feret max (nm)": [p.feret_max_nm for p in rods_a],
-                        "Ellipse length (nm)": [p.length_nm for p in rods_a],
-                        "Circularity": [p.circularity for p in rods_a],
-                    }
-                )
-                fig_r = px.histogram(
-                    df_r,
-                    x="Feret max (nm)",
-                    nbins=min(30, max(8, len(rods_a) // 2)),
-                    title=f"Rods — Feret max (n={len(rods_a)})",
-                )
-                fig_r.update_layout(bargap=0, height=280, margin=dict(t=40, b=20))
-                st.plotly_chart(fig_r, use_container_width=True)
-                if "mean_rod_circularity" in stats:
-                    st.caption(f"Mean circularity: {stats['mean_rod_circularity']:.3f}")
-            col_i += 1
-        if dots_a:
-            with hist_cols[col_i if rods_a and dots_a else 0]:
-                df_d = pd.DataFrame(
-                    {
-                        "Diameter (nm)": [
-                            p.equiv_diameter_nm
-                            if p.equiv_diameter_nm > 0
-                            else 0.5 * (p.length_nm + p.width_nm)
-                            for p in dots_a
-                        ]
-                    }
-                )
-                fig_d = px.histogram(
-                    df_d,
-                    x="Diameter (nm)",
-                    nbins=min(30, max(8, len(dots_a) // 2)),
-                    title=f"Dots — equiv. diameter (n={len(dots_a)})",
-                )
-                fig_d.update_layout(bargap=0, height=280, margin=dict(t=40, b=20))
-                st.plotly_chart(fig_d, use_container_width=True)
-                if "mean_dot_circularity" in stats:
-                    st.caption(f"Mean circularity: {stats['mean_dot_circularity']:.3f}")
+            hist_cols = st.columns(2 if (rods_a and dots_a) else 1)
+            col_i = 0
+            if rods_a:
+                with hist_cols[col_i]:
+                    df_r = pd.DataFrame(
+                        {
+                            "Feret max (nm)": [
+                                float(getattr(p, "feret_max_nm", 0.0) or 0.0) for p in rods_a
+                            ],
+                        }
+                    )
+                    fig_r = px.histogram(
+                        df_r,
+                        x="Feret max (nm)",
+                        nbins=min(30, max(8, len(rods_a) // 2)),
+                        title=f"Rods — Feret max (n={len(rods_a)})",
+                    )
+                    fig_r.update_layout(bargap=0, height=280, margin=dict(t=40, b=20))
+                    st.plotly_chart(fig_r, use_container_width=True)
+                    if "mean_rod_circularity" in stats:
+                        st.caption(
+                            f"Mean circularity: {stats['mean_rod_circularity']:.3f}"
+                        )
+                col_i += 1
+            if dots_a:
+                with hist_cols[col_i if rods_a and dots_a else 0]:
+                    df_d = pd.DataFrame(
+                        {
+                            "Diameter (nm)": [
+                                float(getattr(p, "equiv_diameter_nm", 0.0) or 0.0)
+                                if float(getattr(p, "equiv_diameter_nm", 0.0) or 0.0) > 0
+                                else 0.5 * (p.length_nm + p.width_nm)
+                                for p in dots_a
+                            ]
+                        }
+                    )
+                    fig_d = px.histogram(
+                        df_d,
+                        x="Diameter (nm)",
+                        nbins=min(30, max(8, len(dots_a) // 2)),
+                        title=f"Dots — equiv. diameter (n={len(dots_a)})",
+                    )
+                    fig_d.update_layout(bargap=0, height=280, margin=dict(t=40, b=20))
+                    st.plotly_chart(fig_d, use_container_width=True)
+                    if "mean_dot_circularity" in stats:
+                        st.caption(
+                            f"Mean circularity: {stats['mean_dot_circularity']:.3f}"
+                        )
 
     if st.session_state.add_message:
         st.success(st.session_state.add_message)
