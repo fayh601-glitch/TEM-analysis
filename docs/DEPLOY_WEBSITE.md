@@ -25,12 +25,6 @@ That is why installs hang or fail. You must pick the Python version in the
 6. Set **Python version** to **3.11** or **3.12** (not 3.13 / 3.14)
 7. Deploy and wait (first install of scipy/skimage can take 5–15 minutes)
 
-### Streamlit version (freehand tracing)
-
-Requirements pin **Streamlit &lt; 1.41** so the freehand tracer can show your TEM
-image behind the drawing brush. If logs show `streamlit==1.59`, reboot the app
-(**Manage app → Reboot**) so Cloud reinstalls from `app/requirements.txt`.
-
 Public app URL:
 
 ```text

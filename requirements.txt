@@ -1,11 +1,9 @@
 # Streamlit Community Cloud deps (entrypoint also checks app/)
 # Prefer Python 3.11 or 3.12 in Advanced settings (runtime.txt is ignored by Cloud).
-# Keep Streamlit <1.41 for freehand TEM tracing (drawable-canvas background images).
 
-streamlit>=1.39,<1.41
+streamlit>=1.39
 plotly>=5.24
 streamlit-image-coordinates>=0.1.6
-streamlit-drawable-canvas>=0.9.3
 numpy>=1.26
 scipy>=1.11
 pandas>=2.1

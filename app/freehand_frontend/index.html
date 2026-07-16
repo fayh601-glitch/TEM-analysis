@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TEM freehand trace</title>
+    <style>
+      html, body { margin: 0; padding: 0; overflow: hidden; background: #111; }
+      #wrap { display: inline-block; line-height: 0; cursor: crosshair; touch-action: none; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap"><canvas id="stage"></canvas></div>
+    <script>
+      // Minimal Streamlit component bridge (no npm / React).
+      const Streamlit = {
+        setComponentReady: () =>
+          window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 }, "*"),
+        setFrameHeight: (height) =>
+          window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:setFrameHeight", height }, "*"),
+        setComponentValue: (value) =>
+          window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:setComponentValue", value }, "*"),
+        RENDER_EVENT: "streamlit:render",
+        events: {
+          addEventListener: (type, callback) => {
+            window.addEventListener("message", (event) => {
+              if (event.data?.type === type) callback(event);
+            });
+          },
+        },
+      };
+
+      const stage = document.getElementById("stage");
+      const ctx = stage.getContext("2d");
+      const strokeLayer = document.createElement("canvas");
+      const strokeCtx = strokeLayer.getContext("2d");
+
+      let bg = null;
+      let drawing = false;
+      let strokeWidth = 3;
+      let strokeColor = "#ff3333";
+      let hasStroke = false;
+      let canvasW = 600;
+      let canvasH = 400;
+
+      function paint() {
+        ctx.clearRect(0, 0, canvasW, canvasH);
+        if (bg) ctx.drawImage(bg, 0, 0, canvasW, canvasH);
+        else {
+          ctx.fillStyle = "#222";
+          ctx.fillRect(0, 0, canvasW, canvasH);
+        }
+        ctx.drawImage(strokeLayer, 0, 0);
+      }
+
+      function emitStroke() {
+        if (!hasStroke) {
+          Streamlit.setComponentValue(null);
+          return;
+        }
+        Streamlit.setComponentValue({
+          png: strokeLayer.toDataURL("image/png"),
+          width: canvasW,
+          height: canvasH,
+        });
+      }
+
+      function pos(evt) {
+        const rect = stage.getBoundingClientRect();
+        const src = evt.touches && evt.touches[0] ? evt.touches[0] : evt;
+        return {
+          x: ((src.clientX - rect.left) / rect.width) * canvasW,
+          y: ((src.clientY - rect.top) / rect.height) * canvasH,
+        };
+      }
+
+      function startDraw(evt) {
+        evt.preventDefault();
+        drawing = true;
+        const p = pos(evt);
+        strokeCtx.strokeStyle = strokeColor;
+        strokeCtx.lineWidth = strokeWidth;
+        strokeCtx.lineCap = "round";
+        strokeCtx.lineJoin = "round";
+        strokeCtx.beginPath();
+        strokeCtx.moveTo(p.x, p.y);
+      }
+
+      function moveDraw(evt) {
+        if (!drawing) return;
+        evt.preventDefault();
+        const p = pos(evt);
+        strokeCtx.lineTo(p.x, p.y);
+        strokeCtx.stroke();
+        strokeCtx.beginPath();
+        strokeCtx.moveTo(p.x, p.y);
+        hasStroke = true;
+        paint();
+      }
+
+      function endDraw(evt) {
+        if (!drawing) return;
+        evt.preventDefault();
+        drawing = false;
+        strokeCtx.beginPath();
+        paint();
+        emitStroke();
+      }
+
+      stage.addEventListener("mousedown", startDraw);
+      stage.addEventListener("mousemove", moveDraw);
+      stage.addEventListener("mouseup", endDraw);
+      stage.addEventListener("mouseleave", endDraw);
+      stage.addEventListener("touchstart", startDraw, { passive: false });
+      stage.addEventListener("touchmove", moveDraw, { passive: false });
+      stage.addEventListener("touchend", endDraw);
+
+      function resize(w, h) {
+        canvasW = w;
+        canvasH = h;
+        stage.width = w;
+        stage.height = h;
+        strokeLayer.width = w;
+        strokeLayer.height = h;
+        hasStroke = false;
+      }
+
+      Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (event) => {
+        const args = event.data.args || {};
+        strokeWidth = args.stroke_width || 3;
+        strokeColor = args.stroke_color || "#ff3333";
+        const w = Math.max(1, args.width || 600);
+        const h = Math.max(1, args.height || 400);
+        const clearToken = String(args.clear_token || 0);
+
+        if (stage.width !== w || stage.height !== h) resize(w, h);
+
+        if (stage.dataset.clearToken !== clearToken) {
+          stage.dataset.clearToken = clearToken;
+          strokeCtx.clearRect(0, 0, canvasW, canvasH);
+          hasStroke = false;
+          emitStroke();
+        }
+
+        const url = args.image_url || "";
+        if (url && stage.dataset.bgUrl !== url) {
+          stage.dataset.bgUrl = url;
+          const img = new Image();
+          img.onload = () => {
+            bg = img;
+            paint();
+            Streamlit.setFrameHeight(h + 8);
+          };
+          img.onerror = () => {
+            bg = null;
+            paint();
+            Streamlit.setFrameHeight(h + 8);
+          };
+          img.src = url;
+        } else {
+          paint();
+          Streamlit.setFrameHeight(h + 8);
+        }
+      });
+
+      Streamlit.setComponentReady();
+      Streamlit.setFrameHeight(400);
+    </script>
+  </body>
+</html>

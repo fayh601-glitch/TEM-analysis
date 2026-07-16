@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-07-16-canvas-streamlit140-1"
+_APP_BUILD = "2026-07-16-trace-on-photo-1"
 # Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402
@@ -60,7 +60,7 @@ from tem_rods.shape_match import (  # noqa: E402
     stroke_image_to_mask,
 )
 from skimage.measure import regionprops  # noqa: E402
-from PIL import Image as PILImage  # noqa: E402
+from freehand_trace import freehand_trace_on_image  # noqa: E402
 
 st.set_page_config(
     page_title="Python Based Geometric Analysis for TEM Images",
@@ -302,21 +302,12 @@ def _as_float_gray(image: np.ndarray) -> np.ndarray:
     return gray
 
 
-def _patch_drawable_canvas_for_new_streamlit() -> None:
-    """
-    No-op on Streamlit <1.41 (pinned for Cloud). Kept as a hook in case the
-    pin is ever removed — drawable-canvas needs the legacy image_to_url API.
-    """
-    return
-
-
 def _render_trace_and_match_tab() -> None:
-    """Freehand-trace one particle outline, then find similarly shaped particles."""
+    """Freehand-trace one particle directly on the TEM photo."""
     st.subheader("Trace one particle → find similar shapes")
     st.caption(
-        "Hold the mouse button and **draw a closed loop** around one particle. "
-        "Then click **Find similar particles**. "
-        "The app segments the image and keeps blobs whose shape matches your tracing."
+        "Draw a **closed loop on the TEM photo** below (hold mouse / finger and drag). "
+        "Then click **Find similar particles**."
     )
 
     scale_nm = st.number_input(
@@ -373,7 +364,6 @@ def _render_trace_and_match_tab() -> None:
         except ValueError as exc:
             st.error(str(exc))
             return
-        # Re-encode a clean PNG so scale-bar helpers never see a corrupt upload.
         stem = Path(uploaded.name).stem or "trace_upload"
         image_path = session_dir / f"trace_{stem}.png"
         save_grayscale_png(image, image_path)
@@ -402,21 +392,10 @@ def _render_trace_and_match_tab() -> None:
         st.warning("Upload a TEM image (or run Auto detect first) to start tracing.")
         return
 
-    try:
-        _patch_drawable_canvas_for_new_streamlit()
-        from streamlit_drawable_canvas import st_canvas
-    except ImportError:
-        st.error(
-            "Missing package `streamlit-drawable-canvas`. "
-            "Install with: pip install streamlit-drawable-canvas"
-        )
-        return
-
     gray = _as_float_gray(image)
     h, w = gray.shape[:2]
-    rgb = (np.stack([gray, gray, gray], axis=-1) * 255).astype(np.uint8)
 
-    # Draw matches on the background so the canvas stays freehand-only.
+    # Optional green overlays for previous matches (composited into what you draw on).
     matched_ids: set[int] = set(st.session_state.shape_match_ids or set())
     match_labels = st.session_state.shape_match_labels
     if match_labels is not None and matched_ids:
@@ -428,23 +407,14 @@ def _render_trace_and_match_tab() -> None:
             template_mask=None,
         )
     else:
-        bg_arr = rgb
-
-    bg_pil = PILImage.fromarray(bg_arr)
-    max_canvas_w = 900
-    display_scale = min(1.0, max_canvas_w / float(w))
-    canvas_w = max(1, int(round(w * display_scale)))
-    canvas_h = max(1, int(round(h * display_scale)))
-    bg_display = bg_pil.resize((canvas_w, canvas_h), getattr(PILImage, "Resampling", PILImage).BILINEAR)
+        bg_arr = (np.stack([gray, gray, gray], axis=-1) * 255).astype(np.uint8)
 
     c1, c2 = st.columns([1, 3])
     with c1:
         clear = st.button("Clear drawing")
         find = st.button("Find similar particles", type="primary")
     with c2:
-        st.caption(
-            "Drawing mode: **freehand**. Close the loop around the particle as best you can."
-        )
+        st.caption("Trace **on the photo** — not a separate blank box.")
 
     if clear:
         st.session_state.shape_match_ids = set()
@@ -457,22 +427,19 @@ def _render_trace_and_match_tab() -> None:
         )
         st.rerun()
 
-    st.caption("Draw a closed red loop on the TEM image below.")
-    canvas = st_canvas(
-        fill_color="rgba(0, 0, 0, 0)",
+    stroke_rgba = freehand_trace_on_image(
+        bg_arr,
         stroke_width=int(stroke_width),
         stroke_color="#ff3333",
-        background_image=bg_display,
-        update_streamlit=True,
-        height=canvas_h,
-        width=canvas_w,
-        drawing_mode="freedraw",
-        key=f"trace_canvas_{st.session_state.get('trace_canvas_nonce', 0)}",
-        display_toolbar=True,
+        clear_token=int(st.session_state.get("trace_canvas_nonce", 0)),
+        key=f"tem_freehand_{st.session_state.get('trace_canvas_nonce', 0)}",
     )
+    # Keep latest stroke in session so Find can use it after a rerun from the button.
+    if stroke_rgba is not None:
+        st.session_state.trace_stroke_rgba = stroke_rgba
 
     if find:
-        stroke = None if canvas is None else canvas.image_data
+        stroke = st.session_state.get("trace_stroke_rgba")
         try:
             template_mask = stroke_image_to_mask(stroke, (h, w))
         except ValueError as exc:
@@ -623,7 +590,7 @@ if workspace == "Trace & find similar":
     _render_trace_and_match_tab()
     st.markdown("---")
     st.markdown(
-        "Draw a closed freehand loop around one particle · green = similar matches  \n"
+        "Draw directly on the TEM photo to outline one particle · green = similar matches  \n"
         "Repo: [github.com/fayh601-glitch/TEM-analysis](https://github.com/fayh601-glitch/TEM-analysis)"
     )
     st.stop()
