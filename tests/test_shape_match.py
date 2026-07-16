@@ -58,10 +58,11 @@ def test_find_similar_prefers_rods_over_dot():
     )
     # Ensure template overlaps a labeled rod
     assert (labels[template] > 0).any()
-    _feat, matches = find_similar_in_labels(labels, template, max_score=0.55)
+    _feat, matches, diag = find_similar_in_labels(labels, template, max_score=0.85)
     assert len(matches) >= 1
     # At least one match should be elongated (aspect from features)
     assert any(m.features.aspect_ratio > 1.5 for m in matches)
+    assert diag["n_segmented"] >= 2
 
 
 def test_stroke_image_to_mask_fills_closed_loop():

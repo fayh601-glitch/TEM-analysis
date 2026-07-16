@@ -330,12 +330,15 @@ def _render_trace_and_match_tab() -> None:
         key="trace_preset",
     )
     max_score = st.slider(
-        "Similarity tolerance (lower = stricter)",
-        min_value=0.10,
-        max_value=0.80,
-        value=0.35,
+        "Similarity tolerance (higher = more matches)",
+        min_value=0.20,
+        max_value=1.50,
+        value=0.75,
         step=0.05,
-        help="Maximum shape-distance score to count as a match.",
+        help=(
+            "How different a particle can be and still count as a match. "
+            "Raise this if too few rods are found; lower it if junk is included."
+        ),
         key="trace_max_score",
     )
     stroke_width = st.slider(
@@ -448,6 +451,15 @@ def _render_trace_and_match_tab() -> None:
 
         preset = get_preset(preset_name)
         cfg = replace(preset.config)
+        # Dense TEM fields: split touching rods more aggressively for shape match.
+        cfg = replace(
+            cfg,
+            split_touching_particles=True,
+            split_min_area_px=min(int(cfg.split_min_area_px), 180),
+            split_watershed_min_distance=min(int(cfg.split_watershed_min_distance), 4),
+            min_particle_area_px=min(int(cfg.min_particle_area_px), 25),
+            fill_holes=True,
+        )
         processed = preprocess(
             gray,
             gaussian_sigma=cfg.gaussian_sigma,
@@ -455,13 +467,14 @@ def _render_trace_and_match_tab() -> None:
             use_clahe=cfg.use_clahe,
         )
         labels = segment_particles_from_config(processed, cfg)
-        _feat, matches = find_similar_in_labels(
+        _feat, matches, diag = find_similar_in_labels(
             labels,
             template_mask,
             max_score=float(max_score),
         )
         matched_ids = {m.label_id for m in matches}
         scores = {m.label_id: m.score for m in matches}
+        st.session_state.shape_match_diagnostics = diag
 
         nm_pp = float(st.session_state.nm_per_pixel or 0.0)
         calib_note = None
@@ -509,13 +522,25 @@ def _render_trace_and_match_tab() -> None:
         st.session_state.shape_match_template_mask = template_mask
         st.session_state.shape_match_message = (
             f"Found {len(matches)} similar particle(s) "
-            f"(tolerance ≤ {max_score:.2f})."
+            f"(tolerance ≤ {max_score:.2f}). "
+            f"Segmented {diag['n_segmented']} blobs total."
             + (f" {calib_note}" if calib_note else "")
         )
         st.rerun()
 
     if st.session_state.shape_match_message:
         st.success(st.session_state.shape_match_message)
+        diag = st.session_state.get("shape_match_diagnostics") or {}
+        if diag:
+            st.caption(
+                f"Diagnostics — segmented: {diag.get('n_segmented', '?')} · "
+                f"matched: {diag.get('n_matched', '?')} · "
+                f"rejected by size: {diag.get('n_area_rejected', '?')} · "
+                f"rejected by score: {diag.get('n_score_rejected', '?')} · "
+                f"rejected by aspect: {diag.get('n_aspect_rejected', '?')}. "
+                "If segmented ≪ expected rods, raise tolerance and/or use preset "
+                "**dense_rods_50nm**. Touching rods often get merged before matching."
+            )
 
     particles_rows = st.session_state.shape_match_particles
     if particles_rows:

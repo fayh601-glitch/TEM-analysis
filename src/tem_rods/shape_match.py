@@ -96,60 +96,101 @@ def features_from_region(region) -> ShapeFeatures:
     )
 
 
-def shape_distance(a: ShapeFeatures, b: ShapeFeatures, *, area_weight: float = 0.15) -> float:
+def shape_distance(
+    a: ShapeFeatures,
+    b: ShapeFeatures,
+    *,
+    area_weight: float = 0.08,
+    mode: str = "auto",
+) -> float:
     """
     Weighted distance between two shapes (lower = more similar).
 
-    Combines Hu-moment distance with normalized geometric feature differences.
+    ``mode``:
+      - ``"rods"``: emphasize aspect / eccentricity (better for nanorods)
+      - ``"dots"``: emphasize circularity / Hu moments
+      - ``"auto"``: pick rods if template aspect ≥ 2
     """
-    hu_dist = float(np.mean(np.abs(np.asarray(a.hu_log) - np.asarray(b.hu_log))))
+    if mode == "auto":
+        mode = "rods" if a.aspect_ratio >= 2.0 else "dots"
 
     def _rel(x: float, y: float) -> float:
         denom = max(abs(x), abs(y), 1e-6)
         return abs(x - y) / denom
 
+    hu_dist = float(np.mean(np.abs(np.asarray(a.hu_log) - np.asarray(b.hu_log))))
+    # Cap Hu contribution — small TEM rods are noisy in moment space.
+    hu_dist = min(hu_dist, 1.5)
+
+    if mode == "rods":
+        # Nanorods: length can vary; width/aspect and elongation matter most.
+        geom = (
+            0.40 * _rel(a.aspect_ratio, b.aspect_ratio)
+            + 0.25 * abs(a.eccentricity - b.eccentricity)
+            + 0.15 * _rel(a.feret_ratio, b.feret_ratio)
+            + 0.10 * abs(a.circularity - b.circularity)
+            + 0.05 * abs(a.solidity - b.solidity)
+            + 0.05 * abs(a.extent - b.extent)
+        )
+        area = area_weight * _rel(a.area_px, b.area_px)
+        return 0.20 * hu_dist + 0.80 * geom + area
+
     geom = (
-        0.30 * _rel(a.aspect_ratio, b.aspect_ratio)
-        + 0.20 * abs(a.eccentricity - b.eccentricity)
-        + 0.20 * abs(a.circularity - b.circularity)
+        0.20 * _rel(a.aspect_ratio, b.aspect_ratio)
+        + 0.15 * abs(a.eccentricity - b.eccentricity)
+        + 0.30 * abs(a.circularity - b.circularity)
         + 0.15 * _rel(a.feret_ratio, b.feret_ratio)
         + 0.10 * abs(a.solidity - b.solidity)
-        + 0.05 * abs(a.extent - b.extent)
+        + 0.10 * abs(a.extent - b.extent)
     )
     area = area_weight * _rel(a.area_px, b.area_px)
-    return 0.55 * hu_dist + 0.45 * geom + area
+    return 0.40 * hu_dist + 0.60 * geom + area
 
 
 def find_similar_in_labels(
     labels: np.ndarray,
     template_mask: np.ndarray,
     *,
-    max_score: float = 0.35,
-    min_area_ratio: float = 0.25,
-    max_area_ratio: float = 4.0,
+    max_score: float = 0.70,
+    min_area_ratio: float = 0.12,
+    max_area_ratio: float = 8.0,
+    min_aspect_ratio_frac: float = 0.45,
     exclude_template_overlap: bool = True,
-) -> tuple[ShapeFeatures, list[ShapeMatch]]:
+    mode: str = "auto",
+) -> tuple[ShapeFeatures, list[ShapeMatch], dict[str, int]]:
     """
     Score every labeled blob against a template mask.
 
-    Returns (template_features, matches sorted by ascending score).
+    Returns (template_features, matches sorted by ascending score, diagnostics).
     """
     template = features_from_mask(template_mask)
+    if mode == "auto":
+        mode = "rods" if template.aspect_ratio >= 2.0 else "dots"
+
     matches: list[ShapeMatch] = []
+    n_regions = 0
+    n_area_rejected = 0
+    n_aspect_rejected = 0
+    n_score_rejected = 0
+
     for region in regionprops(labels):
         if region.area <= 0:
             continue
+        n_regions += 1
         area_ratio = float(region.area) / max(template.area_px, 1.0)
         if area_ratio < min_area_ratio or area_ratio > max_area_ratio:
+            n_area_rejected += 1
             continue
-        if exclude_template_overlap:
-            overlap = int(np.logical_and(labels == region.label, template_mask).sum())
-            if overlap > 0.5 * min(region.area, template.area_px):
-                # This is (or overlaps) the traced particle itself — still include
-                # it as a match so the template is counted, but mark via score.
-                pass
+
         feat = features_from_region(region)
-        score = shape_distance(template, feat)
+
+        # For rods: reject blobs that are much rounder than the template.
+        if mode == "rods" and template.aspect_ratio >= 2.0:
+            if feat.aspect_ratio < template.aspect_ratio * min_aspect_ratio_frac:
+                n_aspect_rejected += 1
+                continue
+
+        score = shape_distance(template, feat, mode=mode)
         if score <= max_score:
             matches.append(
                 ShapeMatch(
@@ -161,8 +202,18 @@ def find_similar_in_labels(
                     area_px=int(region.area),
                 )
             )
+        else:
+            n_score_rejected += 1
+
     matches.sort(key=lambda m: m.score)
-    return template, matches
+    diagnostics = {
+        "n_segmented": n_regions,
+        "n_matched": len(matches),
+        "n_area_rejected": n_area_rejected,
+        "n_aspect_rejected": n_aspect_rejected,
+        "n_score_rejected": n_score_rejected,
+    }
+    return template, matches, diagnostics
 
 
 def stroke_image_to_mask(
