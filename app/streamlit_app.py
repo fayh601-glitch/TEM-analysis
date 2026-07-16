@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
-_APP_BUILD = "2026-07-16-freehand-canvas-patch-1"
+_APP_BUILD = "2026-07-16-canvas-shim-2"
 for _mod in list(sys.modules):
     if _mod == "tem_rods" or _mod.startswith("tem_rods."):
         del sys.modules[_mod]
@@ -306,34 +306,50 @@ def _as_float_gray(image: np.ndarray) -> np.ndarray:
 
 def _patch_drawable_canvas_for_new_streamlit() -> None:
     """
-    streamlit-drawable-canvas 0.9.3 calls streamlit.elements.image.image_to_url,
-    which was moved in Streamlit ≥1.41. Restore it before importing the canvas.
+    streamlit-drawable-canvas 0.9.3 calls the old
+    ``streamlit.elements.image.image_to_url(image, width, clamp, channels, format, id)``
+    API. Streamlit ≥1.41 moved/changed that function, so install a shim that
+    matches the canvas calling convention.
     """
-    import streamlit.elements.image as st_image
-
-    if hasattr(st_image, "image_to_url"):
-        return
-    try:
-        from streamlit.elements.lib.image_utils import image_to_url as _image_to_url
-
-        st_image.image_to_url = _image_to_url  # type: ignore[attr-defined]
-        return
-    except Exception:
-        pass
-
     import base64
     from io import BytesIO
 
-    def image_to_url(image, width, clamp, channels, output_format, image_id):  # noqa: ARG001
-        if not isinstance(image, PILImage.Image):
-            image = PILImage.fromarray(np.asarray(image))
-        if image.mode not in ("RGB", "L"):
-            image = image.convert("RGB")
-        buf = BytesIO()
-        image.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-        return f"data:image/png;base64,{b64}"
+    import streamlit.elements.image as st_image
 
+    def image_to_url(image, width, clamp, channels, output_format, image_id=None, *args, **kwargs):  # noqa: ARG001
+        if not isinstance(image, PILImage.Image):
+            arr = np.asarray(image)
+            image = PILImage.fromarray(arr)
+
+        # Old Streamlit API: ``width`` was an int pixel cap (or -1 for native).
+        if isinstance(width, (int, float)) and int(width) > 0 and image.width > int(width):
+            new_w = int(width)
+            new_h = max(1, int(round(image.height * (new_w / image.width))))
+            image = image.resize((new_w, new_h), getattr(PILImage, "Resampling", PILImage).BILINEAR)
+
+        channel = (channels or "RGB").upper()
+        if channel == "RGB" and image.mode != "RGB":
+            image = image.convert("RGB")
+        elif channel == "RGBA" and image.mode != "RGBA":
+            image = image.convert("RGBA")
+
+        fmt = str(output_format or "PNG").upper()
+        if fmt in ("AUTO", "", "None"):
+            fmt = "PNG"
+        if fmt not in ("PNG", "JPEG", "JPG"):
+            fmt = "PNG"
+        if fmt in ("JPEG", "JPG") and image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+            fmt = "JPEG"
+
+        buf = BytesIO()
+        image.save(buf, format="JPEG" if fmt in ("JPEG", "JPG") else "PNG")
+        mime = "image/jpeg" if fmt in ("JPEG", "JPG") else "image/png"
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+
+    # Always override — even if Streamlit exposes a new image_to_url, its
+    # signature no longer matches what drawable-canvas passes.
     st_image.image_to_url = image_to_url  # type: ignore[attr-defined]
 
 
