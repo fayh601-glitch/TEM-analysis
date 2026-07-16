@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
-_APP_BUILD = "2026-07-16-canvas-shim-2"
+_APP_BUILD = "2026-07-16-robust-image-load-1"
 for _mod in list(sys.modules):
     if _mod == "tem_rods" or _mod.startswith("tem_rods."):
         del sys.modules[_mod]
@@ -407,12 +407,19 @@ def _render_trace_and_match_tab() -> None:
     image = None
     image_path: Path | None = None
     if uploaded is not None:
-        from tem_rods.io import load_grayscale
+        from tem_rods.io import load_grayscale_bytes, save_grayscale_png
 
         session_dir = _ensure_session_dir()
-        image_path = session_dir / f"trace_{uploaded.name}"
-        image_path.write_bytes(uploaded.getvalue())
-        image = load_grayscale(image_path)
+        raw = uploaded.getvalue()
+        try:
+            image = load_grayscale_bytes(raw, name=uploaded.name)
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+        # Re-encode a clean PNG so scale-bar helpers never see a corrupt upload.
+        stem = Path(uploaded.name).stem or "trace_upload"
+        image_path = session_dir / f"trace_{stem}.png"
+        save_grayscale_png(image, image_path)
         st.session_state.shape_match_image = image
         st.session_state.shape_match_image_path = str(image_path)
         if st.session_state.get("trace_upload_name") != uploaded.name:
@@ -745,25 +752,34 @@ analyze_clicked = st.button("Analyze image", type="primary", disabled=uploaded i
 
 if analyze_clicked:
     assert uploaded is not None
+    from tem_rods.io import load_grayscale_bytes, save_grayscale_png
+
     session_dir = _ensure_session_dir()
-    image_path = session_dir / uploaded.name
-    image_path.write_bytes(uploaded.getvalue())
+    raw = uploaded.getvalue()
     try:
-        _run_analysis(
-            image_path,
-            scale_bar_nm=scale_bar_nm,
-            preset_name=preset_name,
-            analysis_mode=analysis_mode,
-            show_rejected=show_rejected,
-            manual_scale_bar_px=manual_scale_bar_px,
-        )
-        st.rerun()
+        gray_preview = load_grayscale_bytes(raw, name=uploaded.name)
     except ValueError as exc:
-        st.error(
-            f"Could not measure the scale bar automatically: {exc}\n\n"
-            "Open **Advanced settings** and enable the pixel override, "
-            "or check that the scale bar is visible near the bottom of the image."
-        )
+        st.error(str(exc))
+    else:
+        stem = Path(uploaded.name).stem or "upload"
+        image_path = session_dir / f"{stem}.png"
+        save_grayscale_png(gray_preview, image_path)
+        try:
+            _run_analysis(
+                image_path,
+                scale_bar_nm=scale_bar_nm,
+                preset_name=preset_name,
+                analysis_mode=analysis_mode,
+                show_rejected=show_rejected,
+                manual_scale_bar_px=manual_scale_bar_px,
+            )
+            st.rerun()
+        except ValueError as exc:
+            st.error(
+                f"Could not measure the scale bar automatically: {exc}\n\n"
+                "Open **Advanced settings** and enable the pixel override, "
+                "or check that the scale bar is visible near the bottom of the image."
+            )
 
 # --- Review panel ---
 if st.session_state.analysis_done and st.session_state.particles:

@@ -34,3 +34,22 @@ def test_load_grayscale_png(tmp_path: Path):
     gray = load_grayscale(path)
     assert gray.shape == (30, 40)
     assert gray[0, 0] == pytest.approx(200 / 255.0)
+
+
+def test_load_grayscale_bytes_jpeg(tmp_path: Path):
+    from tem_rods.io import load_grayscale_bytes, save_grayscale_png
+
+    path = tmp_path / "x.jpg"
+    Image.fromarray(np.full((20, 25), 100, dtype=np.uint8), mode="L").save(path, format="JPEG")
+    gray = load_grayscale_bytes(path.read_bytes(), name="x.jpg")
+    assert gray.shape == (20, 25)
+    out = tmp_path / "clean.png"
+    save_grayscale_png(gray, out)
+    assert out.exists()
+
+
+def test_load_grayscale_bytes_rejects_garbage():
+    from tem_rods.io import load_grayscale_bytes
+
+    with pytest.raises(ValueError, match="Could not read"):
+        load_grayscale_bytes(b"not-an-image", name="bad.png")
