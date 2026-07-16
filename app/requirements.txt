@@ -1,5 +1,7 @@
 # Same as repo root — Cloud prefers deps next to the entrypoint file.
-streamlit>=1.39
+# Pin Streamlit <1.41 so streamlit-drawable-canvas can show TEM backgrounds
+# (1.41+ broke image_to_url; data-URL workarounds stay blank on Cloud).
+streamlit>=1.39,<1.41
 plotly>=5.24
 streamlit-image-coordinates>=0.1.6
 streamlit-drawable-canvas>=0.9.3

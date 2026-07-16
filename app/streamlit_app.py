@@ -31,11 +31,9 @@ if str(_REPO / "src") not in sys.path:
 if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
-# Bump when Cloud keeps stale tem_rods modules after a deploy (forces reload).
-_APP_BUILD = "2026-07-16-canvas-bg-dataurl-1"
-for _mod in list(sys.modules):
-    if _mod == "tem_rods" or _mod.startswith("tem_rods."):
-        del sys.modules[_mod]
+# Bump when Cloud keeps stale code after a deploy.
+_APP_BUILD = "2026-07-16-canvas-streamlit140-1"
+# Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402
     add_particle_at_click,
@@ -306,125 +304,10 @@ def _as_float_gray(image: np.ndarray) -> np.ndarray:
 
 def _patch_drawable_canvas_for_new_streamlit() -> None:
     """
-    streamlit-drawable-canvas 0.9.3 calls the old
-    ``streamlit.elements.image.image_to_url(image, width, clamp, channels, format, id)``
-    API, then prepends ``server.baseUrlPath``. On Streamlit ≥1.41 that path is wrong,
-    so we:
-      1) install a data-URL shim for image_to_url
-      2) wrap st_canvas so data: URLs are NOT prefixed (that was blanking the TEM image)
+    No-op on Streamlit <1.41 (pinned for Cloud). Kept as a hook in case the
+    pin is ever removed — drawable-canvas needs the legacy image_to_url API.
     """
-    import base64
-    from io import BytesIO
-    from hashlib import md5
-
-    import streamlit.elements.image as st_image
-    import streamlit_drawable_canvas as sdc
-
-    def image_to_url(image, width, clamp, channels, output_format, image_id=None, *args, **kwargs):  # noqa: ARG001
-        if not isinstance(image, PILImage.Image):
-            arr = np.asarray(image)
-            image = PILImage.fromarray(arr)
-
-        if isinstance(width, (int, float)) and int(width) > 0 and image.width > int(width):
-            new_w = int(width)
-            new_h = max(1, int(round(image.height * (new_w / image.width))))
-            image = image.resize(
-                (new_w, new_h), getattr(PILImage, "Resampling", PILImage).BILINEAR
-            )
-
-        channel = (channels or "RGB").upper()
-        if channel == "RGB" and image.mode != "RGB":
-            image = image.convert("RGB")
-        elif channel == "RGBA" and image.mode != "RGBA":
-            image = image.convert("RGBA")
-
-        fmt = str(output_format or "PNG").upper()
-        if fmt in ("AUTO", "", "NONE"):
-            fmt = "PNG"
-        if fmt not in ("PNG", "JPEG", "JPG"):
-            fmt = "PNG"
-        if fmt in ("JPEG", "JPG") and image.mode not in ("RGB", "L"):
-            image = image.convert("RGB")
-            fmt = "JPEG"
-
-        buf = BytesIO()
-        image.save(buf, format="JPEG" if fmt in ("JPEG", "JPG") else "PNG")
-        mime = "image/jpeg" if fmt in ("JPEG", "JPG") else "image/png"
-        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-        return f"data:{mime};base64,{b64}"
-
-    st_image.image_to_url = image_to_url  # type: ignore[attr-defined]
-
-    if getattr(sdc, "_tem_safe_canvas_patched", False):
-        return
-
-    _resize_img = sdc._resize_img
-    _data_url_to_image = sdc._data_url_to_image
-    CanvasResult = sdc.CanvasResult
-    _component_func = sdc._component_func
-
-    def st_canvas_safe(
-        fill_color: str = "#eee",
-        stroke_width: int = 20,
-        stroke_color: str = "black",
-        background_color: str = "",
-        background_image: PILImage.Image | None = None,
-        update_streamlit: bool = True,
-        height: int = 400,
-        width: int = 600,
-        drawing_mode: str = "freedraw",
-        initial_drawing: dict | None = None,
-        display_toolbar: bool = True,
-        point_display_radius: int = 3,
-        key=None,
-    ):
-        background_image_url = None
-        if background_image is not None:
-            background_image = _resize_img(background_image, height, width)
-            background_image_url = st_image.image_to_url(
-                background_image,
-                width,
-                True,
-                "RGB",
-                "PNG",
-                f"drawable-canvas-bg-{md5(background_image.tobytes()).hexdigest()}-{key}",
-            )
-            # CRITICAL: do not prepend baseUrlPath onto data: URLs (Cloud blank-bg bug).
-            if not str(background_image_url).startswith("data:"):
-                base = st._config.get_option("server.baseUrlPath") or ""
-                background_image_url = f"{base}{background_image_url}"
-            background_color = ""
-
-        initial_drawing = (
-            {"version": "4.4.0"} if initial_drawing is None else initial_drawing
-        )
-        initial_drawing["background"] = background_color
-
-        component_value = _component_func(
-            fillColor=fill_color,
-            strokeWidth=stroke_width,
-            strokeColor=stroke_color,
-            backgroundColor=background_color,
-            backgroundImageURL=background_image_url,
-            realtimeUpdateStreamlit=update_streamlit and (drawing_mode != "polygon"),
-            canvasHeight=height,
-            canvasWidth=width,
-            drawingMode=drawing_mode,
-            initialDrawing=initial_drawing,
-            displayToolbar=display_toolbar,
-            displayRadius=point_display_radius,
-            key=key,
-            default=None,
-        )
-        if component_value is None:
-            return CanvasResult()
-        return CanvasResult(
-            np.asarray(_data_url_to_image(component_value["data"])),
-            component_value["raw"],
-        )
-
-    sdc.st_canvas = st_canvas_safe
-    sdc._tem_safe_canvas_patched = True
+    return
 
 
 def _render_trace_and_match_tab() -> None:
@@ -574,18 +457,12 @@ def _render_trace_and_match_tab() -> None:
         )
         st.rerun()
 
-    # Preview above the canvas (always visible). Canvas below uses the same image as BG.
-    try:
-        st.image(bg_arr, caption="TEM preview — draw on the canvas below", width="stretch")
-    except TypeError:
-        st.image(bg_arr, caption="TEM preview — draw on the canvas below", use_container_width=True)
-
+    st.caption("Draw a closed red loop on the TEM image below.")
     canvas = st_canvas(
         fill_color="rgba(0, 0, 0, 0)",
         stroke_width=int(stroke_width),
         stroke_color="#ff3333",
         background_image=bg_display,
-        background_color="#111111",
         update_streamlit=True,
         height=canvas_h,
         width=canvas_w,
