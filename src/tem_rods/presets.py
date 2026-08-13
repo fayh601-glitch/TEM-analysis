@@ -117,9 +117,10 @@ _DENSE_RODS_50NM_CONFIG = AnalysisConfig(
     expected_scale_bar_nm=50.0,
     fill_holes=True,
     morphology_closing_radius=1,
-    threshold_mode=ThresholdMode.OTSU,
-    gaussian_sigma=1.8,
-    min_local_contrast=0.05,
+    threshold_mode=ThresholdMode.DARK,
+    gaussian_sigma=2.0,
+    min_local_contrast=0.08,
+    min_darkness=0.12,
     min_solidity=0.52,
     min_extent=0.20,
     min_length_nm=8.0,
@@ -129,7 +130,7 @@ _DENSE_RODS_50NM_CONFIG = AnalysisConfig(
 
 PRESETS["dense_rods_50nm"] = ImagePreset(
     name="dense_rods_50nm",
-    description="Dense nanorod fields (~50 nm scale bar); ignores carbon-film grain.",
+    description="Dense nanorod fields (~50 nm scale bar); only dark particles, not film grain.",
     default_scale_bar_nm=50.0,
     config=_DENSE_RODS_50NM_CONFIG,
 )

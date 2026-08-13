@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-less-grain-1"
+_APP_BUILD = "2026-08-13-dark-pixels-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -122,8 +122,9 @@ st.markdown(
 st.title("Python Based Geometric Analysis for TEM Images")
 st.caption(
     "Choose a workspace: auto-detect particles, or trace one outline to find similar shapes. "
+    "Only **dark** nanoparticles are outlined — carbon-film grain is ignored. "
     "Enter the scale bar (nm), approve outlines, download results. "
-    "Reference: Enright et al. 2018."
+    f"Build {_APP_BUILD}."
 )
 
 

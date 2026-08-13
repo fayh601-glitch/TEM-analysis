@@ -43,6 +43,7 @@ def segment_particles(
     percentile_threshold: float = 40.0,
     local_threshold_block_size: int = 35,
     local_threshold_offset: float = 0.01,
+    min_darkness: float = 0.08,
     exclude_bbox: tuple[int, int, int, int] | None = None,
 ) -> np.ndarray:
     """
@@ -56,6 +57,7 @@ def segment_particles(
         percentile_threshold=percentile_threshold,
         local_threshold_block_size=local_threshold_block_size,
         local_threshold_offset=local_threshold_offset,
+        min_darkness=min_darkness,
     )
     # Remove tiny specks — real nanorods are larger than a few pixels across.
     binary = morphology.remove_small_objects(binary, min_size=min_particle_area_px)
@@ -101,6 +103,7 @@ def segment_particles(
         min_solidity=min_solidity,
         min_extent=min_extent,
         min_local_contrast=min_local_contrast,
+        min_darkness=min_darkness,
     )
 
 
@@ -134,6 +137,7 @@ def segment_particles_from_config(
         percentile_threshold=config.percentile_threshold,
         local_threshold_block_size=config.local_threshold_block_size,
         local_threshold_offset=config.local_threshold_offset,
+        min_darkness=getattr(config, "min_darkness", 0.08),
         exclude_bbox=bbox,
     )
 
@@ -278,6 +282,25 @@ def _mask_bbox(
     return masked
 
 
+def _threshold_dark_particles(image: np.ndarray, *, min_darkness: float) -> np.ndarray:
+    """Keep only pixels clearly darker than the carbon-film background.
+
+    Film grain sits a few percent below the median. Nanorods are much darker.
+    Statistics are taken from the brighter half of the image so the dark tail
+    (the particles) does not inflate the background scale.
+    """
+    flat = image.reshape(-1)
+    median = float(np.median(flat))
+    film = flat[flat >= median]
+    if film.size < 32:
+        film = flat
+    film_med = float(np.median(film))
+    mad = float(np.median(np.abs(film - film_med)))
+    sigma = 1.4826 * mad if mad > 1e-6 else float(max(np.std(film), 1e-3))
+    offset = max(float(min_darkness), 2.8 * sigma)
+    return image < (median - offset)
+
+
 def _binarize_particles(
     image: np.ndarray,
     *,
@@ -285,21 +308,23 @@ def _binarize_particles(
     percentile_threshold: float,
     local_threshold_block_size: int,
     local_threshold_offset: float,
+    min_darkness: float = 0.08,
 ) -> np.ndarray:
     mode = threshold_mode
-    if mode == ThresholdMode.AUTO:
+    mode_value = mode.value if isinstance(mode, ThresholdMode) else str(mode)
+    if mode == ThresholdMode.AUTO or mode_value == "auto":
         trial = threshold_otsu(image)
         if (image < trial).mean() > 0.75:
             mode = ThresholdMode.PERCENTILE
-        elif float(np.std(image)) > 0.12:
-            mode = ThresholdMode.LOCAL
         else:
-            mode = ThresholdMode.OTSU
+            # Never fall back to local thresholding: it labels every film-grain valley.
+            mode = ThresholdMode.DARK
+            mode_value = "dark"
 
-    if mode == ThresholdMode.PERCENTILE:
+    if mode == ThresholdMode.PERCENTILE or mode_value == "percentile":
         thresh = float(np.percentile(image, percentile_threshold))
         return image < thresh
-    if mode == ThresholdMode.LOCAL:
+    if mode == ThresholdMode.LOCAL or mode_value == "local":
         block = local_threshold_block_size
         if block % 2 == 0:
             block += 1
@@ -309,6 +334,8 @@ def _binarize_particles(
             offset=local_threshold_offset,
         )
         return image < local_thresh
+    if mode == ThresholdMode.DARK or mode_value == "dark":
+        return _threshold_dark_particles(image, min_darkness=min_darkness)
     thresh = float(threshold_otsu(image))
     return image < thresh
 
@@ -331,11 +358,13 @@ def _filter_regions(
     min_solidity: float,
     min_extent: float,
     min_local_contrast: float,
+    min_darkness: float = 0.08,
 ) -> np.ndarray:
     kept = np.zeros_like(labels)
     next_id = 1
     padding = 5
     h, w = labels.shape
+    background = float(np.median(image))
     for region in regionprops(labels):
         if region.area < min_area:
             continue
@@ -354,6 +383,11 @@ def _filter_regions(
         crop_img = image[r0:r1, c0:c1]
         crop_mask = np.zeros(crop_img.shape, dtype=bool)
         crop_mask[minr - r0 : maxr - r0, minc - c0 : maxc - c0] = region.image
+        if not crop_mask.any():
+            continue
+        # Drop film-grain blobs: they are not much darker than the whole field.
+        if float(crop_img[crop_mask].mean()) > background - min_darkness:
+            continue
         if _local_contrast(crop_img, crop_mask) < min_local_contrast:
             continue
 

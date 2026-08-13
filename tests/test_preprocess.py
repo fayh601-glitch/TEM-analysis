@@ -32,6 +32,16 @@ def test_preprocess_keeps_normal_tem_image_shape():
     assert processed.shape == image.shape
 
 
+def test_preprocess_does_not_stretch_film_grain():
+    """Min–max stretch used to map grain specks to 0 and 1, creating fake particles."""
+    rng = np.random.default_rng(0)
+    image = np.clip(rng.normal(0.70, 0.03, (80, 80)), 0.60, 0.80)
+    processed = preprocess(image, gaussian_sigma=0.0)
+    assert processed.min() >= 0.55
+    assert processed.max() <= 0.85
+    assert abs(float(np.median(processed)) - 0.70) < 0.05
+
+
 def test_detect_bottom_info_banner_finds_amt_strip():
     rng = np.random.default_rng(2)
     micro = rng.uniform(0.45, 0.70, (320, 480))

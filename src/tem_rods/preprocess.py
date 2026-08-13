@@ -35,7 +35,9 @@ def preprocess(
     if crop_margins:
         img = crop_white_margins(img)
 
-    img = exposure.rescale_intensity(img, in_range="image", out_range=(0.0, 1.0))
+    # Do not min–max stretch. Stretching a grainy carbon film maps specks to 0 and 1,
+    # so later thresholding treats background texture as particles.
+    img = np.clip(img, 0.0, 1.0)
     if use_clahe:
         img = exposure.equalize_adapthist(img, clip_limit=0.02)
     if gaussian_sigma > 0:

@@ -29,6 +29,7 @@ class ThresholdMode(str, Enum):
     OTSU = "otsu"
     PERCENTILE = "percentile"
     LOCAL = "local"
+    DARK = "dark"
     AUTO = "auto"
 
 
@@ -59,6 +60,9 @@ class AnalysisConfig:
     min_solidity: float = 0.48
     min_extent: float = 0.18
     min_local_contrast: float = 0.025
+    # Particle mean intensity must be this much below the image median (0–1).
+    # Carbon-film grain is only a few percent below the median; nanorods are much darker.
+    min_darkness: float = 0.08
     mask_bottom_fraction: float = 0.12
     use_scale_bar_bbox_mask: bool = True
     expected_scale_bar_nm: float | None = None
