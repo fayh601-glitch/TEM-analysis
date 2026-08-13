@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-amt-scalebar-1"
+_APP_BUILD = "2026-08-13-fast-analysis-1"
 # Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402
@@ -316,7 +316,7 @@ def _run_analysis(
         preset.config,
         analysis_mode=analysis_mode,
         show_rejected_on_overlay=show_rejected,
-        write_segmentation_debug=True,
+        write_segmentation_debug=False,
     )
     with st.spinner("Detecting scale bar and analyzing..."):
         nm_per_pixel, scale_bar, calib_note = _resolve_calibration(

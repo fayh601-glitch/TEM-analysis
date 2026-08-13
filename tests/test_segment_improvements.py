@@ -89,3 +89,33 @@ def test_dense_rods_alias_shares_config():
     from tem_rods.presets import get_preset
 
     assert get_preset("dense_rods").config is get_preset("dense_rods_50nm").config
+
+
+def test_segmentation_finishes_quickly_on_grainy_field():
+    """Full-image per-particle scans used to take minutes on camera TIFFs."""
+    import time
+
+    from tem_rods.models import ThresholdMode
+
+    rng = np.random.default_rng(1)
+    image = rng.uniform(0.55, 0.85, (640, 720))
+    for i in range(40):
+        rr, cc = ellipse(40 + (i % 8) * 70, 50 + (i // 8) * 85, 6, 18, rotation=0.2 * i)
+        rr = np.clip(rr, 0, image.shape[0] - 1)
+        cc = np.clip(cc, 0, image.shape[1] - 1)
+        image[rr, cc] = 0.12
+    t0 = time.perf_counter()
+    labels = segment_particles(
+        image,
+        min_particle_area_px=25,
+        split_touching_particles=True,
+        mask_bottom_fraction=0.0,
+        min_local_contrast=0.02,
+        min_solidity=0.3,
+        min_extent=0.1,
+        threshold_mode=ThresholdMode.LOCAL,
+        local_threshold_block_size=35,
+    )
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 8.0
+    assert int(labels.max()) >= 10
