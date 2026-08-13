@@ -32,7 +32,40 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-fast-analysis-1"
+_APP_BUILD = "2026-08-13-cloud-import-1"
+
+# Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
+_SRC = str(_REPO / "src")
+if _SRC in sys.path:
+    sys.path.remove(_SRC)
+sys.path.insert(0, _SRC)
+
+
+def _drop_stale_tem_rods() -> None:
+    """Reload tem_rods from src/ when Cloud still has an older installed copy."""
+    src_root = str((_REPO / "src").resolve())
+    stale = False
+    for name in ("tem_rods", "tem_rods.segment"):
+        mod = sys.modules.get(name)
+        if mod is None:
+            continue
+        path = Path(getattr(mod, "__file__", "") or "")
+        try:
+            resolved = str(path.resolve())
+        except OSError:
+            resolved = ""
+        if not resolved.startswith(src_root):
+            stale = True
+        if name.endswith("segment") and not hasattr(mod, "iter_region_contours_xy"):
+            stale = True
+    if not stale:
+        return
+    for key in list(sys.modules):
+        if key == "tem_rods" or key.startswith("tem_rods."):
+            del sys.modules[key]
+
+
+_drop_stale_tem_rods()
 # Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402

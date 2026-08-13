@@ -12,12 +12,25 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from skimage.measure import regionprops
+from skimage.measure import find_contours, regionprops
 
 from tem_rods.distributions import fit_lognormal, sample_size_note
 from tem_rods.measure import measure_from_region
 from tem_rods.models import ParticleClass, ParticleMeasurement
-from tem_rods.segment import iter_region_contours_xy
+
+
+def _iter_region_contours_xy(region):
+    """Yield (xs, ys) contour vertices without importing tem_rods.segment.
+
+    Streamlit Cloud can keep a stale ``tem_rods.segment`` from site-packages,
+    so importing ``iter_region_contours_xy`` from there crashes the app on boot.
+    """
+    minr, minc, _maxr, _maxc = region.bbox
+    crop = region.image.astype(float)
+    if crop.size == 0:
+        return
+    for contour in find_contours(crop, 0.5):
+        yield contour[:, 1] + minc, contour[:, 0] + minr
 
 
 def default_approved_ids(
@@ -230,7 +243,7 @@ def build_review_figure(
                 color = "#00cc66"
             else:
                 color = "#cc3333"
-            for xs, ys in iter_region_contours_xy(region):
+            for xs, ys in _iter_region_contours_xy(region):
                 fig.add_trace(
                     go.Scatter(
                         x=xs,
@@ -530,7 +543,7 @@ def render_annotated_rgb(
             color = (0, 200, 100)
         else:
             color = (200, 50, 50)
-        for xs, ys in iter_region_contours_xy(region):
+        for xs, ys in _iter_region_contours_xy(region):
             pts = list(zip(xs.tolist(), ys.tolist()))
             if len(pts) >= 2:
                 draw.line(pts, fill=color, width=2)
