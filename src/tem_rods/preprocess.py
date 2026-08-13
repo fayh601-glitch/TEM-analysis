@@ -74,12 +74,12 @@ def crop_white_margins(image: np.ndarray, *, threshold: float = 0.92) -> np.ndar
 def detect_bottom_info_banner(
     image: np.ndarray,
     *,
-    bright_threshold: float = 0.86,
-    min_bright_fraction: float = 0.55,
-    min_height_fraction: float = 0.05,
-    max_height_fraction: float = 0.30,
-    min_height_px: int = 12,
-    min_banner_median: float = 0.88,
+    bright_threshold: float = 0.82,
+    min_bright_fraction: float = 0.50,
+    min_height_fraction: float = 0.04,
+    max_height_fraction: float = 0.35,
+    min_height_px: int = 10,
+    min_banner_median: float = 0.80,
 ) -> int | None:
     """
     Find a bright instrument info bar glued to the bottom of a TEM micrograph.
@@ -102,22 +102,27 @@ def detect_bottom_info_banner(
     if h < min_h + 8:
         return None
 
+    # Median stays high even when a row has black filename/Cal text.
+    row_median = np.median(img, axis=1)
     bright_frac = (img >= bright_threshold).mean(axis=1)
     start = h
     row = h - 1
-    while row >= h - max_h and bright_frac[row] >= min_bright_fraction:
+    while row >= h - max_h and (
+        row_median[row] >= min_banner_median or bright_frac[row] >= min_bright_fraction
+    ):
         start = row
         row -= 1
 
     banner_h = h - start
     if banner_h < min_h:
         return None
-    if np.median(img[start:]) < min_banner_median:
+    banner_med = float(np.median(img[start:]))
+    if banner_med < min_banner_median:
         return None
-    # Require a darker micrograph just above the banner so we do not crop
-    # an overexposed field that happens to be bright at the bottom.
-    above = img[max(0, start - 8) : start]
-    if above.size and float(np.median(above)) >= min_banner_median - 0.05:
+    # Require a darker micrograph just above the strip (relative drop, not
+    # an absolute cutoff — light carbon films are often ~0.7–0.85).
+    above = img[max(0, start - 12) : start]
+    if above.size and banner_med - float(np.median(above)) < 0.06:
         return None
     return start
 
