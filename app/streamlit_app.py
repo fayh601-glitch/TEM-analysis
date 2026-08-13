@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-07-16-trace-on-photo-1"
+_APP_BUILD = "2026-08-13-amt-banner-1"
 # Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402
@@ -52,7 +52,11 @@ from tem_rods.models import AnalysisMode, ParticleClass, ParticleMeasurement  # 
 from tem_rods.pipeline import analyze_image  # noqa: E402
 from tem_rods.presets import PRESETS, get_preset  # noqa: E402
 from tem_rods.preprocess import preprocess  # noqa: E402
-from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar  # noqa: E402
+from tem_rods.scale_bar import (  # noqa: E402
+    ScaleBarDetection,
+    detect_scale_bar,
+    parse_embedded_nm_per_pixel,
+)
 from tem_rods.segment import segment_particles_from_config  # noqa: E402
 from tem_rods.shape_match import (  # noqa: E402
     find_similar_in_labels,
@@ -184,6 +188,47 @@ def _ensure_session_dir() -> Path:
     return session_dir
 
 
+def _st_image(image, *, caption: str) -> None:
+    """Show an image on Streamlit 1.39 through 1.61+.
+
+    Streamlit 1.61 removed ``use_column_width`` from ``st.image``, which raised
+    ``TypeError`` on Cloud as soon as an image was uploaded. Current Streamlit
+    uses ``width="stretch"``; older versions still expect the previous aliases.
+    """
+    for kwargs in (
+        {"width": "stretch"},
+        {"use_container_width": True},
+        {"use_column_width": "always"},
+    ):
+        try:
+            st.image(image, caption=caption, **kwargs)
+            return
+        except TypeError as exc:
+            # Only swallow removed/renamed layout kwargs, not image-data errors.
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            continue
+    st.image(image, caption=caption)
+
+
+def _preview_uploaded_image(uploaded) -> None:
+    """Decode PNG/JPEG/TIFF uploads and preview them as grayscale.
+
+    Microscope TIFFs (AMT camera exports, etc.) are not browser-native, so
+    passing the raw ``UploadedFile`` into ``st.image`` can fail even after the
+    layout-parameter fix. Decode with PIL first, same as the analysis path.
+    """
+    from tem_rods.io import load_grayscale_bytes
+
+    try:
+        gray = load_grayscale_bytes(uploaded.getvalue(), name=uploaded.name)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    preview = (np.clip(gray, 0, 1) * 255.0).astype(np.uint8)
+    _st_image(preview, caption=f"Uploaded image ({uploaded.name})")
+
+
 def _store_analysis_result(
     result,
     stem: str,
@@ -218,11 +263,13 @@ def _resolve_calibration(
     *,
     scale_bar_nm: float,
     manual_scale_bar_px: float | None,
+    embedded_nm_per_pixel: float | None = None,
 ) -> tuple[float, ScaleBarDetection | None, str]:
     """
     Return (nm_per_pixel, scale_bar_detection_or_None, user-facing note).
 
-    Prefers automatic pixel measurement; falls back to manual px override.
+    Prefers automatic pixel measurement; falls back to manual px override,
+    then to a burned-in AMT ``Cal: … µm/pix`` value when present.
     """
     if manual_scale_bar_px is not None and manual_scale_bar_px > 0:
         nm_per_pixel = scale_bar_nm / manual_scale_bar_px
@@ -232,7 +279,16 @@ def _resolve_calibration(
         )
         return nm_per_pixel, None, note
 
-    detection = detect_scale_bar(image_path, scale_bar_nm=scale_bar_nm)
+    try:
+        detection = detect_scale_bar(image_path, scale_bar_nm=scale_bar_nm)
+    except ValueError:
+        if embedded_nm_per_pixel is not None and embedded_nm_per_pixel > 0:
+            note = (
+                f"Used burned-in calibration {embedded_nm_per_pixel:.4f} nm/px "
+                "(scale-bar line was not found automatically)."
+            )
+            return float(embedded_nm_per_pixel), None, note
+        raise
     note = (
         f"Auto-detected {detection.polarity} scale bar: "
         f"{detection.bar_nm:g} nm / {detection.bar_pixels:.1f} px "
@@ -249,6 +305,7 @@ def _run_analysis(
     analysis_mode: AnalysisMode,
     show_rejected: bool,
     manual_scale_bar_px: float | None = None,
+    embedded_nm_per_pixel: float | None = None,
 ) -> None:
     session_dir = _ensure_session_dir()
     out_dir = session_dir / "outputs"
@@ -265,6 +322,7 @@ def _run_analysis(
             image_path,
             scale_bar_nm=scale_bar_nm,
             manual_scale_bar_px=manual_scale_bar_px,
+            embedded_nm_per_pixel=embedded_nm_per_pixel,
         )
         result = analyze_image(
             image_path,
@@ -351,7 +409,7 @@ def _render_trace_and_match_tab() -> None:
 
     uploaded = st.file_uploader(
         "Upload TEM image for shape matching",
-        type=["png", "jpg", "jpeg", "tif", "tiff"],
+        type=["png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"],
         key="trace_uploader",
     )
 
@@ -639,7 +697,8 @@ analysis_mode = mode_map[mode_label]
 st.subheader("2. Scale bar")
 st.caption(
     "Enter only the printed number (e.g. **50** if the image says “50 nm”). "
-    "The app finds the white or black scale-bar line and measures its length in pixels."
+    "The app finds the white or black scale-bar line and measures its length in pixels. "
+    "A white instrument bar with filename/text at the bottom is cropped automatically."
 )
 scale_bar_nm = st.number_input(
     "Scale bar length (nm)",
@@ -691,12 +750,16 @@ if SAMPLE_50NM.exists() and not st.session_state.analysis_done:
             st.error(f"Scale bar / analysis failed: {exc}")
 
 uploaded = st.file_uploader(
-    "Upload TEM image (PNG, JPG, TIF)",
-    type=["png", "jpg", "jpeg", "tif", "tiff"],
+    "Upload TEM image (PNG, JPG, TIF, BMP, WEBP)",
+    type=["png", "jpg", "jpeg", "tif", "tiff", "bmp", "webp"],
+    help=(
+        "Microscope TIFFs (AMT camera exports) and screenshots are both OK. "
+        "The white info bar with filename and Cal: text is removed before particle finding."
+    ),
 )
 
 if uploaded is not None and not st.session_state.analysis_done:
-    st.image(uploaded, caption="Uploaded image", use_column_width="always")
+    _preview_uploaded_image(uploaded)
 
 analyze_clicked = st.button("Analyze image", type="primary", disabled=uploaded is None)
 
@@ -714,6 +777,9 @@ if analyze_clicked:
         stem = Path(uploaded.name).stem or "upload"
         image_path = session_dir / f"{stem}.png"
         save_grayscale_png(gray_preview, image_path)
+        embedded = parse_embedded_nm_per_pixel(
+            raw, name=uploaded.name, image=gray_preview
+        )
         try:
             _run_analysis(
                 image_path,
@@ -722,6 +788,7 @@ if analyze_clicked:
                 analysis_mode=analysis_mode,
                 show_rejected=show_rejected,
                 manual_scale_bar_px=manual_scale_bar_px,
+                embedded_nm_per_pixel=embedded,
             )
             st.rerun()
         except ValueError as exc:

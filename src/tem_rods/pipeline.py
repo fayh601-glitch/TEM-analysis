@@ -9,6 +9,7 @@ Most other files are helpers that this one calls in order.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ from tem_rods.calibrate import validate_nm_per_pixel
 from tem_rods.io import load_grayscale
 from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_by_class
 from tem_rods.models import AnalysisConfig, AnalysisResult, ParticleClass
-from tem_rods.preprocess import preprocess
+from tem_rods.preprocess import crop_bottom_info_banner, crop_white_margins, preprocess
 from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar
 from tem_rods.segment import segment_particles_from_config
 
@@ -125,11 +126,23 @@ def analyze_image(
     warnings: list[str] = []
 
     image = load_grayscale(image_path)
+    if cfg.crop_margins:
+        image = crop_white_margins(image)
+    if cfg.crop_info_banner:
+        cropped, banner_row = crop_bottom_info_banner(image)
+        if banner_row is not None:
+            removed = image.shape[0] - cropped.shape[0]
+            image = cropped
+            warnings.append(
+                f"Cropped instrument info bar at the bottom ({removed} px of labels/text removed)."
+            )
+            # Scale bar / filename text now live outside the micrograph.
+            cfg = replace(cfg, mask_bottom_fraction=0.0, use_scale_bar_bbox_mask=False)
     # Preprocess reduces film grain so thresholding does not count every speck as a particle.
     processed = preprocess(
         image,
         gaussian_sigma=cfg.gaussian_sigma,
-        crop_margins=cfg.crop_margins,
+        crop_margins=False,
         use_clahe=cfg.use_clahe,
     )
     exclude_bbox, mask_notes = _resolve_exclude_bbox(
@@ -356,14 +369,15 @@ def _write_overlay(
 
     if scale_bar is not None:
         row_min, col_min, row_max, col_max = scale_bar.bbox
-        ax.plot(
-            [col_min, col_max, col_max, col_min, col_min],
-            [row_min, row_min, row_max, row_max, row_min],
-            color="#ffcc00",
-            linewidth=1.0,
-            linestyle=":",
-            alpha=0.9,
-        )
+        if row_min < image.shape[0]:
+            ax.plot(
+                [col_min, col_max, col_max, col_min, col_min],
+                [row_min, row_min, row_max, row_max, row_min],
+                color="#ffcc00",
+                linewidth=1.0,
+                linestyle=":",
+                alpha=0.9,
+            )
 
     ax.axis("off")
     fig.tight_layout()

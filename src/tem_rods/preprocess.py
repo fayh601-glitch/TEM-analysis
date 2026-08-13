@@ -69,3 +69,62 @@ def crop_white_margins(image: np.ndarray, *, threshold: float = 0.92) -> np.ndar
     if top >= bottom or left >= right:
         return image
     return img[top:bottom, left:right]
+
+
+def detect_bottom_info_banner(
+    image: np.ndarray,
+    *,
+    bright_threshold: float = 0.86,
+    min_bright_fraction: float = 0.55,
+    min_height_fraction: float = 0.05,
+    max_height_fraction: float = 0.30,
+    min_height_px: int = 12,
+    min_banner_median: float = 0.88,
+) -> int | None:
+    """
+    Find a bright instrument info bar glued to the bottom of a TEM micrograph.
+
+    AMT/Gatan exports burn in a white strip with filename, ``50 nm`` scale bar,
+    and ``Cal: … µm/pix``. Those rows are mostly white but not *entirely* white
+    (because of black text), so :func:`crop_white_margins` leaves them in place.
+
+    Returns the first row of the banner, or ``None`` if none is found.
+    """
+    img = np.asarray(image, dtype=np.float64)
+    if img.ndim != 2 or img.size == 0:
+        return None
+    if img.max() > 1.5:
+        img = img / 255.0
+
+    h, _w = img.shape
+    max_h = max(min_height_px, int(round(h * max_height_fraction)))
+    min_h = max(min_height_px, int(round(h * min_height_fraction)))
+    if h < min_h + 8:
+        return None
+
+    bright_frac = (img >= bright_threshold).mean(axis=1)
+    start = h
+    row = h - 1
+    while row >= h - max_h and bright_frac[row] >= min_bright_fraction:
+        start = row
+        row -= 1
+
+    banner_h = h - start
+    if banner_h < min_h:
+        return None
+    if np.median(img[start:]) < min_banner_median:
+        return None
+    # Require a darker micrograph just above the banner so we do not crop
+    # an overexposed field that happens to be bright at the bottom.
+    above = img[max(0, start - 8) : start]
+    if above.size and float(np.median(above)) >= min_banner_median - 0.05:
+        return None
+    return start
+
+
+def crop_bottom_info_banner(image: np.ndarray, **kwargs) -> tuple[np.ndarray, int | None]:
+    """Return ``(cropped_micrograph, banner_start_row_or_None)``."""
+    start = detect_bottom_info_banner(image, **kwargs)
+    if start is None:
+        return image, None
+    return image[:start], start

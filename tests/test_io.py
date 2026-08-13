@@ -53,3 +53,23 @@ def test_load_grayscale_bytes_rejects_garbage():
 
     with pytest.raises(ValueError, match="Could not read"):
         load_grayscale_bytes(b"not-an-image", name="bad.png")
+
+
+def test_load_grayscale_bytes_tiff(tmp_path: Path):
+    from tem_rods.io import load_grayscale_bytes
+
+    path = tmp_path / "CT01_CdSeRods_45minrxn_003.tif"
+    Image.fromarray(np.full((30, 40), 180, dtype=np.uint8), mode="L").save(path, format="TIFF")
+    gray = load_grayscale_bytes(path.read_bytes(), name=path.name)
+    assert gray.shape == (30, 40)
+    assert gray[0, 0] == pytest.approx(180 / 255.0)
+
+
+def test_load_16bit_tiff(tmp_path: Path):
+    path = tmp_path / "amt_camera.tif"
+    Image.fromarray(np.full((20, 25), 40000, dtype=np.uint16)).save(path, format="TIFF")
+    gray = load_grayscale(path)
+    assert gray.ndim == 2
+    assert gray.shape == (20, 25)
+    assert gray.max() <= 1.0
+    assert gray.min() >= 0.0
