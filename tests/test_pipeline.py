@@ -256,6 +256,29 @@ def test_analyze_image_writes_outputs(tmp_path):
     assert result.overlay_path.exists()
 
 
+def test_large_image_is_downsampled(tmp_path):
+    image = np.ones((1800, 1800), dtype=np.float64) * 0.85
+    rr, cc = ellipse(220, 400, 12, 40, rotation=0.3)
+    image[rr, cc] = 0.12
+    image_path = tmp_path / "big.png"
+    from skimage import io
+
+    io.imsave(image_path, (np.clip(image, 0, 1) * 255).astype(np.uint8))
+    cfg = AnalysisConfig(
+        max_image_side_px=400,
+        split_touching_particles=False,
+        mask_bottom_fraction=0.0,
+        crop_info_banner=False,
+        write_segmentation_debug=False,
+        min_particle_area_px=20,
+        min_local_contrast=0.02,
+    )
+    result = analyze_image(image_path, 0.5, output_dir=tmp_path / "out", config=cfg, save_outputs=False)
+    assert result.image.shape[0] <= 400
+    assert result.image.shape[1] <= 400
+    assert any("Downsampled" in w for w in result.warnings)
+
+
 def test_analyze_image_crops_amt_info_banner(tmp_path):
     """White filename/Cal strip must not be counted as particles."""
     from PIL import Image, ImageDraw

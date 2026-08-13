@@ -12,11 +12,12 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from skimage.measure import find_contours, regionprops
+from skimage.measure import regionprops
 
 from tem_rods.distributions import fit_lognormal, sample_size_note
 from tem_rods.measure import measure_from_region
 from tem_rods.models import ParticleClass, ParticleMeasurement
+from tem_rods.segment import iter_region_contours_xy
 
 
 def default_approved_ids(
@@ -207,15 +208,21 @@ def build_review_figure(
     fig = go.Figure()
     fig.add_trace(go.Image(z=rgb))
 
-    # Contours (visual only — not the click target).
+    # Contours (visual only — not the click target). Skip on huge fields so
+    # the browser stays responsive; numbered markers remain clickable.
     if labels is not None:
         label_to_particle = {p.particle_id: p for p in particles}
+        n_draw = 0
+        max_contour_traces = 250
         for region in regionprops(labels):
             particle = label_to_particle.get(region.label)
             if particle is None:
                 continue
             if particle.particle_class == ParticleClass.REJECT and not show_rejects:
                 continue
+            n_draw += 1
+            if n_draw > max_contour_traces:
+                break
             approved = particle.particle_id in approved_ids
             if particle.particle_class == ParticleClass.REJECT:
                 color = "orange"
@@ -223,12 +230,11 @@ def build_review_figure(
                 color = "#00cc66"
             else:
                 color = "#cc3333"
-            mask = labels == region.label
-            for contour in find_contours(mask.astype(float), 0.5):
+            for xs, ys in iter_region_contours_xy(region):
                 fig.add_trace(
                     go.Scatter(
-                        x=contour[:, 1],
-                        y=contour[:, 0],
+                        x=xs,
+                        y=ys,
                         mode="lines",
                         line=dict(color=color, width=1.5),
                         hoverinfo="skip",
@@ -524,9 +530,8 @@ def render_annotated_rgb(
             color = (0, 200, 100)
         else:
             color = (200, 50, 50)
-        mask = labels == region.label
-        for contour in find_contours(mask.astype(float), 0.5):
-            pts = [(float(c[1]), float(c[0])) for c in contour]
+        for xs, ys in iter_region_contours_xy(region):
+            pts = list(zip(xs.tolist(), ys.tolist()))
             if len(pts) >= 2:
                 draw.line(pts, fill=color, width=2)
         cy, cx = region.centroid

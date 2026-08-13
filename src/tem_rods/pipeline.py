@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Ellipse
-from skimage.measure import find_contours, regionprops
+from skimage.measure import regionprops
 
 from tem_rods.calibrate import validate_nm_per_pixel
 from tem_rods.io import load_grayscale
@@ -24,7 +24,7 @@ from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_
 from tem_rods.models import AnalysisConfig, AnalysisResult, ParticleClass
 from tem_rods.preprocess import crop_bottom_info_banner, crop_white_margins, preprocess
 from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar
-from tem_rods.segment import segment_particles_from_config
+from tem_rods.segment import iter_region_contours_xy, segment_particles_from_config
 
 
 def _resolve_exclude_bbox(
@@ -107,6 +107,39 @@ def _particle_is_drawn(particle, result: AnalysisResult) -> bool:
     return True
 
 
+def _downsample_for_speed(
+    image: np.ndarray,
+    nm_per_pixel: float,
+    max_side_px: int | None,
+) -> tuple[np.ndarray, float, float]:
+    """
+    Shrink huge camera TIFFs so local thresholding and overlays stay interactive.
+
+    Returns (image, nm_per_pixel, resize_factor). ``resize_factor`` is 1.0 when
+    no resize happened. nm/pixel is scaled so reported sizes stay in nanometers.
+    """
+    if max_side_px is None or max_side_px <= 0:
+        return image, nm_per_pixel, 1.0
+    height, width = image.shape[:2]
+    side = max(height, width)
+    if side <= max_side_px:
+        return image, nm_per_pixel, 1.0
+    factor = max_side_px / float(side)
+    new_h = max(32, int(round(height * factor)))
+    new_w = max(32, int(round(width * factor)))
+    from skimage.transform import resize
+
+    resized = resize(
+        image,
+        (new_h, new_w),
+        order=1,
+        anti_aliasing=True,
+        preserve_range=True,
+    )
+    resized = np.clip(np.asarray(resized, dtype=np.float64), 0.0, 1.0)
+    return resized, nm_per_pixel / factor, factor
+
+
 def analyze_image(
     image_path: str | Path,
     nm_per_pixel: float,
@@ -138,6 +171,14 @@ def analyze_image(
             )
             # Scale bar / filename text now live outside the micrograph.
             cfg = replace(cfg, mask_bottom_fraction=0.0, use_scale_bar_bbox_mask=False)
+    image, nm_per_pixel, resize_factor = _downsample_for_speed(
+        image, nm_per_pixel, cfg.max_image_side_px
+    )
+    if resize_factor < 1.0:
+        warnings.append(
+            f"Downsampled image to {image.shape[1]}×{image.shape[0]} px "
+            f"so analysis finishes in seconds instead of minutes."
+        )
     # Preprocess reduces film grain so thresholding does not count every speck as a particle.
     processed = preprocess(
         image,
@@ -152,6 +193,8 @@ def analyze_image(
         scale_bar_nm_hint=scale_bar_nm_hint,
     )
     warnings.extend(mask_notes)
+    if exclude_bbox is not None and resize_factor < 1.0:
+        exclude_bbox = tuple(int(round(v * resize_factor)) for v in exclude_bbox)
     # Segmentation is the hardest step: find dark blobs and drop scale-bar strip / noise.
     labels = segment_particles_from_config(processed, cfg, exclude_bbox=exclude_bbox)
     particles = measure_particles(labels, nm_per_pixel=nm_per_pixel, config=cfg)
@@ -200,7 +243,7 @@ def analyze_image(
         result.overlay_path = out_dir / f"{stem}_overlay.png"
         _write_csv(result)
         _write_overlay(image, labels, result, scale_bar=scale_bar)
-        if cfg.write_segmentation_debug:
+        if cfg.write_segmentation_debug and int(labels.max()) <= 400:
             debug_path = out_dir / f"{stem}_segments_debug.png"
             _write_segments_debug(image, labels, debug_path)
             print(f"Segment debug: {debug_path}")
@@ -305,13 +348,12 @@ def _write_overlay(
         color = color_map[particle.particle_class]
         is_reject = particle.particle_class == ParticleClass.REJECT
 
-        particle_mask = labels == region.label
         line_style = ":" if is_reject else "-"
         line_width = 1.2 if is_reject else 1.5
-        for contour in find_contours(particle_mask.astype(float), 0.5):
+        for xs, ys in iter_region_contours_xy(region):
             ax.plot(
-                contour[:, 1],
-                contour[:, 0],
+                xs,
+                ys,
                 color=color,
                 linewidth=line_width,
                 linestyle=line_style,
@@ -401,10 +443,9 @@ def _write_segments_debug(
     cmap = plt.colormaps["nipy_spectral"]
     n_labels = int(labels.max())
     for region in regionprops(labels):
-        mask = labels == region.label
         color = cmap(region.label / max(n_labels, 1))
-        for contour in find_contours(mask.astype(float), 0.5):
-            ax.plot(contour[:, 1], contour[:, 0], color=color, linewidth=1.2)
+        for xs, ys in iter_region_contours_xy(region):
+            ax.plot(xs, ys, color=color, linewidth=1.2)
         cy, cx = region.centroid
         ax.text(
             cx,

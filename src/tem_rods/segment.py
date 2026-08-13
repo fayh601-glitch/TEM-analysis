@@ -15,7 +15,7 @@ from scipy import ndimage as ndi
 from skimage import morphology, segmentation
 from skimage.feature import peak_local_max
 from skimage.filters import threshold_local, threshold_otsu
-from skimage.measure import label, regionprops
+from skimage.measure import find_contours, label, regionprops
 
 from tem_rods.models import AnalysisConfig, ThresholdMode
 
@@ -168,6 +168,8 @@ def _split_touching_regions(
     """
     output = labels.copy()
     next_id = int(output.max()) + 1
+    max_split_area = 80_000
+    max_split_bbox = 450
 
     for region in regionprops(labels):
         if not _should_split_region(
@@ -177,14 +179,17 @@ def _split_touching_regions(
             split_min_width_px=split_min_width_px,
         ):
             continue
-
-        particle_mask = labels == region.label
+        if region.area > max_split_area:
+            continue
         min_row, min_col, max_row, max_col = region.bbox
+        if (max_row - min_row) > max_split_bbox or (max_col - min_col) > max_split_bbox:
+            continue
+
         row_start = max(0, min_row - bbox_pad)
         col_start = max(0, min_col - bbox_pad)
         row_end = min(output.shape[0], max_row + bbox_pad)
         col_end = min(output.shape[1], max_col + bbox_pad)
-        submask = particle_mask[row_start:row_end, col_start:col_end]
+        submask = labels[row_start:row_end, col_start:col_end] == region.label
 
         distance = ndi.distance_transform_edt(submask)
         coords = peak_local_max(
@@ -200,7 +205,7 @@ def _split_touching_regions(
         markers = ndi.label(marker_mask)[0]
         split_labels = segmentation.watershed(-distance, markers, mask=submask)
 
-        output[particle_mask] = 0
+        output[row_start:row_end, col_start:col_end][submask] = 0
         for piece_id in range(1, split_labels.max() + 1):
             piece = split_labels == piece_id
             if int(piece.sum()) < min_piece_area_px:
@@ -247,12 +252,11 @@ def _should_split_region(
 
 
 def _relabel_sequential(labels: np.ndarray) -> np.ndarray:
-    relabeled = np.zeros_like(labels)
-    next_id = 1
-    for region in regionprops(labels):
-        relabeled[labels == region.label] = next_id
-        next_id += 1
-    return relabeled
+    if int(labels.max()) == 0:
+        return labels
+    from skimage.segmentation import relabel_sequential as _sk_relabel
+
+    return _sk_relabel(labels)[0]
 
 
 def _mask_bottom_region(binary: np.ndarray, bottom_fraction: float) -> np.ndarray:
@@ -330,6 +334,8 @@ def _filter_regions(
 ) -> np.ndarray:
     kept = np.zeros_like(labels)
     next_id = 1
+    padding = 5
+    h, w = labels.shape
     for region in regionprops(labels):
         if region.area < min_area:
             continue
@@ -340,10 +346,27 @@ def _filter_regions(
         if region.extent < min_extent:
             continue
 
-        particle_mask = labels == region.label
-        if _local_contrast(image, particle_mask) < min_local_contrast:
+        minr, minc, maxr, maxc = region.bbox
+        r0 = max(0, minr - padding)
+        c0 = max(0, minc - padding)
+        r1 = min(h, maxr + padding)
+        c1 = min(w, maxc + padding)
+        crop_img = image[r0:r1, c0:c1]
+        crop_mask = np.zeros(crop_img.shape, dtype=bool)
+        crop_mask[minr - r0 : maxr - r0, minc - c0 : maxc - c0] = region.image
+        if _local_contrast(crop_img, crop_mask) < min_local_contrast:
             continue
 
-        kept[particle_mask] = next_id
+        kept[minr:maxr, minc:maxc][region.image] = next_id
         next_id += 1
     return kept
+
+
+def iter_region_contours_xy(region):
+    """Yield (xs, ys) contour vertices in full-image coordinates."""
+    minr, minc, _maxr, _maxc = region.bbox
+    crop = region.image.astype(float)
+    if crop.size == 0:
+        return
+    for contour in find_contours(crop, 0.5):
+        yield contour[:, 1] + minc, contour[:, 0] + minr

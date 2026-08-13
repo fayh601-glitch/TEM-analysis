@@ -25,11 +25,9 @@ def feret_diameters_px(coords: np.ndarray, *, n_angles: int = 180) -> tuple[floa
     pts = np.asarray(coords, dtype=float)
     xy = np.column_stack([pts[:, 1], pts[:, 0]])
     angles = np.linspace(0.0, math.pi, n_angles, endpoint=False)
-    spans = np.empty(n_angles, dtype=float)
-    for i, theta in enumerate(angles):
-        c, s = math.cos(theta), math.sin(theta)
-        proj = xy[:, 0] * c + xy[:, 1] * s
-        spans[i] = float(proj.max() - proj.min())
+    directions = np.stack([np.cos(angles), np.sin(angles)], axis=0)
+    proj = xy @ directions
+    spans = proj.max(axis=0) - proj.min(axis=0)
     return float(spans.max()), float(spans.min())
 
 
