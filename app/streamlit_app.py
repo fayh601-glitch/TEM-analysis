@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-amt-banner-1"
+_APP_BUILD = "2026-08-13-amt-scalebar-1"
 # Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402
@@ -289,8 +289,9 @@ def _resolve_calibration(
             )
             return float(embedded_nm_per_pixel), None, note
         raise
+    location = " in the bottom info bar" if detection.in_info_banner else ""
     note = (
-        f"Auto-detected {detection.polarity} scale bar: "
+        f"Auto-detected {detection.polarity} scale bar{location}: "
         f"{detection.bar_nm:g} nm / {detection.bar_pixels:.1f} px "
         f"= {detection.nm_per_pixel:.4f} nm/px"
     )
@@ -697,8 +698,8 @@ analysis_mode = mode_map[mode_label]
 st.subheader("2. Scale bar")
 st.caption(
     "Enter only the printed number (e.g. **50** if the image says “50 nm”). "
-    "The app finds the white or black scale-bar line and measures its length in pixels. "
-    "A white instrument bar with filename/text at the bottom is cropped automatically."
+    "The app finds that line even when it sits in the white camera info bar "
+    "at the bottom, then crops the bar so the text is not counted as particles."
 )
 scale_bar_nm = st.number_input(
     "Scale bar length (nm)",

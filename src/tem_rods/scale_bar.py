@@ -36,6 +36,7 @@ class ScaleBarDetection:
     bbox: tuple[int, int, int, int]
     confidence: float = 1.0
     polarity: str = "dark"  # "dark" or "bright"
+    in_info_banner: bool = False
 
 
 def detect_scale_bar(
@@ -53,11 +54,13 @@ def detect_scale_bar(
     prefer: str = "auto",
 ) -> ScaleBarDetection:
     """
-    Detect a thin horizontal scale bar in the bottom-left of a TEM micrograph.
+    Detect a thin horizontal scale bar in a TEM micrograph.
 
-    Tries both dark bars (classic paper figures) and bright/white bars
-    (phone screenshots / instrument overlays). Pass ``scale_bar_nm`` with the
-    printed label value (e.g. 50) and receive the measured pixel length.
+    Paper figures usually place a dark or bright bar near the bottom-left.
+    AMT/Gatan camera exports put the bar in a white info strip at the bottom;
+    that strip is searched at full width (including gray anti-aliased lines)
+    before particle analysis crops it away. Pass ``scale_bar_nm`` with the
+    printed label value (e.g. 50).
     """
     image_path = Path(image_path)
     im = np.array(Image.open(image_path).convert("L"), dtype=float)
@@ -66,6 +69,46 @@ def detect_scale_bar(
 
     h, w = im.shape
     banner_row = detect_bottom_info_banner(im)
+
+    # AMT/Gatan footers put the 50 nm line in the white strip — often gray
+    # (not pure black) and not in the bottom-left corner. Measure it there
+    # *before* the strip is cropped for particle finding.
+    if banner_row is not None and prefer in ("auto", "dark"):
+        run_hit = _detect_dark_bar_by_runs(
+            im[banner_row:],
+            row_offset=banner_row,
+            image_width=w,
+            min_bar_width_px=min_bar_width_px,
+        )
+        if run_hit is not None:
+            bar_pixels, bbox, polarity = run_hit
+            bar_nm = scale_bar_nm
+            if bar_nm is None:
+                bar_nm = _parse_scale_bar_nm(image_path, im, bbox)
+            if bar_nm is None:
+                raise ValueError(
+                    f"Could not determine scale bar length in nm for {image_path}. "
+                    "Pass scale_bar_nm or use a filename like sample_200nm.png."
+                )
+            nm_per_pixel = validate_nm_per_pixel(
+                validate_scale_bar_calibration(
+                    bar_pixels,
+                    bar_nm,
+                    image_width=w,
+                    max_bar_fraction=0.60,
+                )
+            )
+            confidence = min(1.0, bar_pixels / min_bar_width_px / 3.0)
+            return ScaleBarDetection(
+                bar_pixels=bar_pixels,
+                bar_nm=bar_nm,
+                nm_per_pixel=nm_per_pixel,
+                bbox=bbox,
+                confidence=confidence,
+                polarity=polarity,
+                in_info_banner=True,
+            )
+
     if banner_row is not None:
         # Instrument overlays put the scale bar in a full-width info strip.
         row_start = banner_row
@@ -75,7 +118,7 @@ def detect_scale_bar(
         col_end = int(w * search_left_fraction)
         roi = im[row_start:, :col_end]
 
-    dark_threshold = max_dark_value if max_dark_value is not None else 0.25
+    dark_threshold = max_dark_value if max_dark_value is not None else (0.45 if banner_row is not None else 0.25)
     if max_dark_value is not None and max_dark_value > 1.5:
         dark_threshold = max_dark_value / 255.0
     bright_threshold = min_bright_value if min_bright_value is not None else 0.85
@@ -90,15 +133,17 @@ def detect_scale_bar(
     if prefer == "bright":
         search_plan = [("bright", roi > bright_threshold), ("dark", roi < dark_threshold)]
 
+    max_width_frac = 0.60 if banner_row is not None else 0.4
     candidates: list[tuple[float, object, float, str]] = []
     for polarity, binary in search_plan:
         for score, region, bar_width in _horizontal_bar_candidates(
             binary,
             row_start=row_start,
             image_width=w,
-            max_bar_height_px=14 if banner_row is not None else max_bar_height_px,
+            max_bar_height_px=16 if banner_row is not None else max_bar_height_px,
             min_bar_width_px=min_bar_width_px,
             min_bar_aspect=min_bar_aspect,
+            max_width_fraction=max_width_frac,
         ):
             # Prefer longer, thinner bars slightly in the lower part of the ROI.
             candidates.append((score, region, bar_width, polarity))
@@ -136,6 +181,7 @@ def detect_scale_bar(
         bbox=bbox,
         confidence=confidence,
         polarity=polarity,
+        in_info_banner=banner_row is not None,
     )
 
 
@@ -147,6 +193,7 @@ def _horizontal_bar_candidates(
     max_bar_height_px: int,
     min_bar_width_px: int,
     min_bar_aspect: float,
+    max_width_fraction: float = 0.4,
 ) -> list[tuple[float, object, float]]:
     labels = label(binary)
     candidates: list[tuple[float, object, float]] = []
@@ -161,7 +208,7 @@ def _horizontal_bar_candidates(
             continue
         if width / max(height, 1) < min_bar_aspect:
             continue
-        if width > image_width * 0.4:
+        if width > image_width * max_width_fraction:
             continue
 
         row_scores = []
@@ -184,6 +231,80 @@ def _horizontal_bar_candidates(
         candidates.append((score, region, bar_width))
 
     return candidates
+
+
+def _longest_true_run(row: np.ndarray) -> tuple[int, int, int]:
+    """Return (length, start, end_exclusive) of the longest contiguous True run."""
+    if row.size == 0 or not np.any(row):
+        return 0, 0, 0
+    padded = np.concatenate([[False], np.asarray(row, dtype=bool), [False]])
+    diff = np.diff(padded.astype(np.int8))
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0]
+    lengths = ends - starts
+    idx = int(np.argmax(lengths))
+    return int(lengths[idx]), int(starts[idx]), int(ends[idx])
+
+
+def _detect_dark_bar_by_runs(
+    roi: np.ndarray,
+    *,
+    row_offset: int,
+    image_width: int,
+    min_bar_width_px: int = 18,
+    max_bar_fraction: float = 0.55,
+    max_thickness_px: int = 12,
+) -> tuple[float, tuple[int, int, int, int], str] | None:
+    """
+    Find a thin dark horizontal line in a bright info bar by scanning rows.
+
+    Connected-component detection misses AMT bars that are anti-aliased gray
+    or sit next to filename/Cal text. A scale bar is the longest dark run that
+    is not a full-width rule and is only a few pixels thick.
+    """
+    if roi.size == 0:
+        return None
+    med = float(np.median(roi))
+    dark_threshold = max(0.18, min(0.55, med * 0.62))
+    binary = roi < dark_threshold
+    h, _w = binary.shape
+    max_width = int(image_width * max_bar_fraction)
+
+    row_runs = [_longest_true_run(binary[r]) for r in range(h)]
+    candidates: list[tuple[float, float, int, int, int, int]] = []
+    for row, (length, start, end) in enumerate(row_runs):
+        if length < min_bar_width_px or length > max_width:
+            continue
+        top = row
+        bottom = row + 1
+        for rr in range(row - 1, -1, -1):
+            other_len, other_s, other_e = row_runs[rr]
+            if other_len >= 0.82 * length and other_e > start and other_s < end:
+                top = rr
+            else:
+                break
+        for rr in range(row + 1, h):
+            other_len, other_s, other_e = row_runs[rr]
+            if other_len >= 0.82 * length and other_e > start and other_s < end:
+                bottom = rr + 1
+            else:
+                break
+        thickness = bottom - top
+        if thickness > max_thickness_px:
+            continue
+        score = float(length) - 1.5 * thickness
+        candidates.append((score, float(length), top, bottom, start, end))
+
+    if not candidates:
+        return None
+    _score, bar_pixels, top, bottom, start, end = max(candidates, key=lambda item: item[0])
+    bbox = (
+        row_offset + top,
+        start,
+        row_offset + bottom,
+        end,
+    )
+    return bar_pixels, bbox, "dark"
 
 
 def detect_scale_bar_pixels(

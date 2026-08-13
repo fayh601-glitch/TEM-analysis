@@ -85,3 +85,33 @@ def test_parse_embedded_nm_per_pixel_from_tiff_tag(tmp_path):
 
     parsed = parse_embedded_nm_per_pixel(path)
     assert parsed == pytest.approx(0.231)
+
+
+def test_detect_centered_gray_scale_bar_in_amt_footer(tmp_path):
+    """AMT footers put a gray 50 nm line in the white strip, not bottom-left."""
+    from PIL import ImageFilter
+
+    rng = np.random.default_rng(7)
+    micro_h, banner_h, w = 400, 90, 640
+    micro = (rng.uniform(0.62, 0.88, (micro_h, w)) * 255).astype(np.uint8)
+    banner = np.full((banner_h, w), 245, dtype=np.uint8)
+    image = np.vstack([micro, banner])
+    pil = Image.fromarray(image, mode="L")
+    draw = ImageDraw.Draw(pil)
+    draw.text((8, micro_h + 6), "CT01_CdSeRods_45minrxn_003.tif    Imaging    HV=80kV", fill=20)
+    draw.text((8, micro_h + 22), "Cal: 0.000231 um/pix  Direct Mag: 44000 x  AMT Camera System", fill=20)
+    draw.text((8, micro_h + 70), "Camera: NANOSPRT12  Exposure: 1000 ms  Gamma: 1.00", fill=20)
+    bar_w = 140
+    x0 = 280  # 44% of width — missed by a bottom-left-only search
+    y = micro_h + 48
+    draw.line([(x0, y), (x0 + bar_w, y)], fill=70, width=4)
+    draw.text((x0 + bar_w + 8, y - 7), "50 nm", fill=20)
+    path = tmp_path / "CT01_CdSeRods_45minrxn_003.tif"
+    pil.filter(ImageFilter.SMOOTH).save(path)
+
+    detection = detect_scale_bar(path, scale_bar_nm=50.0)
+    assert detection.polarity == "dark"
+    assert detection.in_info_banner is True
+    assert detection.bbox[0] >= micro_h - 5
+    assert detection.bar_pixels == pytest.approx(bar_w, abs=12.0)
+    assert detection.nm_per_pixel == pytest.approx(50.0 / detection.bar_pixels, rel=0.12)
