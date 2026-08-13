@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-07-16-trace-on-photo-1"
+_APP_BUILD = "2026-08-13-image-preview-1"
 # Do NOT delete tem_rods modules on each rerun — that causes KeyError on Cloud.
 
 from particle_review import (  # noqa: E402
@@ -182,6 +182,47 @@ def _ensure_session_dir() -> Path:
     session_dir = _REPO / "outputs" / "streamlit_sessions" / st.session_state._session_folder
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
+
+
+def _st_image(image, *, caption: str) -> None:
+    """Show an image on Streamlit 1.39 through 1.61+.
+
+    Streamlit 1.61 removed ``use_column_width`` from ``st.image``, which raised
+    ``TypeError`` on Cloud as soon as an image was uploaded. Current Streamlit
+    uses ``width="stretch"``; older versions still expect the previous aliases.
+    """
+    for kwargs in (
+        {"width": "stretch"},
+        {"use_container_width": True},
+        {"use_column_width": "always"},
+    ):
+        try:
+            st.image(image, caption=caption, **kwargs)
+            return
+        except TypeError as exc:
+            # Only swallow removed/renamed layout kwargs, not image-data errors.
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            continue
+    st.image(image, caption=caption)
+
+
+def _preview_uploaded_image(uploaded) -> None:
+    """Decode PNG/JPEG/TIFF uploads and preview them as grayscale.
+
+    Microscope TIFFs (AMT camera exports, etc.) are not browser-native, so
+    passing the raw ``UploadedFile`` into ``st.image`` can fail even after the
+    layout-parameter fix. Decode with PIL first, same as the analysis path.
+    """
+    from tem_rods.io import load_grayscale_bytes
+
+    try:
+        gray = load_grayscale_bytes(uploaded.getvalue(), name=uploaded.name)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    preview = (np.clip(gray, 0, 1) * 255.0).astype(np.uint8)
+    _st_image(preview, caption=f"Uploaded image ({uploaded.name})")
 
 
 def _store_analysis_result(
@@ -696,7 +737,7 @@ uploaded = st.file_uploader(
 )
 
 if uploaded is not None and not st.session_state.analysis_done:
-    st.image(uploaded, caption="Uploaded image", use_column_width="always")
+    _preview_uploaded_image(uploaded)
 
 analyze_clicked = st.button("Analyze image", type="primary", disabled=uploaded is None)
 
