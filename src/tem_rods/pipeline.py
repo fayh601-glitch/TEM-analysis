@@ -281,12 +281,17 @@ def _quality_warnings(
     rejected_frac = sum(1 for p in particles if p.particle_class == ParticleClass.REJECT) / len(
         particles
     )
-    if rejected_frac > 0.35:
+    if rejected_frac > 0.80:
         warnings.append(
             f"High reject rate ({rejected_frac:.0%}); segmentation or classification may need tuning."
         )
 
     rods = [p for p in particles if p.particle_class == ParticleClass.ROD]
+    if len(rods) > 250:
+        warnings.append(
+            f"Detected {len(rods)} rods — that is unusually high and often means "
+            "carbon-film grain was counted. Check that only dark nanorods are outlined."
+        )
     if rods:
         lengths = [p.length_nm for p in rods]
         mean_len = float(np.mean(lengths))

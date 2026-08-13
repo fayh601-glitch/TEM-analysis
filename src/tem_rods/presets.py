@@ -107,26 +107,29 @@ PRESETS: dict[str, ImagePreset] = {
 }
 
 _DENSE_RODS_50NM_CONFIG = AnalysisConfig(
-    min_particle_area_px=120,
-    min_eccentricity_rod=0.78,
-    min_aspect_ratio_rod=1.35,
-    split_touching_particles=True,
-    split_min_area_px=350,
+    min_particle_area_px=200,
+    min_eccentricity_rod=0.86,
+    min_aspect_ratio_rod=1.60,
+    split_touching_particles=False,
+    split_min_area_px=800,
     mask_bottom_fraction=0.15,
     use_scale_bar_bbox_mask=True,
     expected_scale_bar_nm=50.0,
     fill_holes=True,
-    morphology_closing_radius=2,
-    threshold_mode=ThresholdMode.LOCAL,
-    local_threshold_block_size=41,
-    gaussian_sigma=1.2,
-    min_local_contrast=0.015,
+    morphology_closing_radius=1,
+    threshold_mode=ThresholdMode.OTSU,
+    gaussian_sigma=1.8,
+    min_local_contrast=0.05,
+    min_solidity=0.52,
+    min_extent=0.20,
+    min_length_nm=8.0,
     analysis_mode=AnalysisMode.RODS,
+    show_rejected_on_overlay=False,
 )
 
 PRESETS["dense_rods_50nm"] = ImagePreset(
     name="dense_rods_50nm",
-    description="Dense nanorod fields (~50 nm scale bar); reduces light-center rod splitting.",
+    description="Dense nanorod fields (~50 nm scale bar); ignores carbon-film grain.",
     default_scale_bar_nm=50.0,
     config=_DENSE_RODS_50NM_CONFIG,
 )

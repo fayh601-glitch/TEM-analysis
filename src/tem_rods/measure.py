@@ -111,15 +111,15 @@ def measure_particles(
         ):
             particle_class = ParticleClass.ROD
         particle_class = apply_analysis_mode(particle_class, cfg.analysis_mode)
-
-        measurements.append(
-            measure_from_region(
-                region,
-                particle_id=idx,
-                nm_per_pixel=nm_per_pixel,
-                particle_class=particle_class,
-            )
+        measurement = measure_from_region(
+            region,
+            particle_id=idx,
+            nm_per_pixel=nm_per_pixel,
+            particle_class=particle_class,
         )
+        if cfg.min_length_nm is not None and measurement.length_nm < cfg.min_length_nm:
+            measurement.particle_class = ParticleClass.REJECT
+        measurements.append(measurement)
 
     return measurements
 

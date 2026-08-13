@@ -90,6 +90,7 @@ class AnalysisConfig:
     sample_seed: int = 42
     merge_warning_mean_median_ratio: float = 2.5
     max_image_side_px: int = 1600
+    min_length_nm: float | None = None
 
 
 @dataclass

@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-cloud-import-1"
+_APP_BUILD = "2026-08-13-less-grain-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -751,7 +751,7 @@ with st.expander("Advanced settings", expanded=False):
         index=preset_names.index(default_preset) if default_preset in preset_names else 0,
         help="Tuned thresholds for dense rods, paper screenshots, dots, etc.",
     )
-    show_rejected = st.checkbox("Show rejected particles (orange)", value=True)
+    show_rejected = st.checkbox("Show rejected particles (orange)", value=False)
     override_px = st.checkbox(
         "Manually override scale-bar pixels (only if auto-detect fails)",
         value=False,

@@ -79,16 +79,56 @@ def test_merge_warning_when_mean_exceeds_median():
 
 def test_dense_rods_preset_registered():
     from tem_rods.presets import get_preset
+    from tem_rods.models import ThresholdMode
 
     preset = get_preset("dense_rods_50nm")
     assert preset.config.fill_holes is True
     assert preset.config.mask_bottom_fraction >= 0.12
+    assert preset.config.threshold_mode == ThresholdMode.OTSU
+    assert preset.config.min_local_contrast >= 0.04
+    assert preset.config.min_length_nm is not None
 
 
 def test_dense_rods_alias_shares_config():
     from tem_rods.presets import get_preset
 
     assert get_preset("dense_rods").config is get_preset("dense_rods_50nm").config
+
+
+def test_grainy_film_without_rods_is_not_called_rods():
+    """Local thresholding used to label carbon-film specks as hundreds of rods."""
+    from tem_rods.measure import measure_particles
+    from tem_rods.models import ParticleClass
+    from tem_rods.presets import get_preset
+    from tem_rods.segment import segment_particles_from_config
+
+    rng = np.random.default_rng(0)
+    image = rng.uniform(0.55, 0.85, (360, 420))
+    preset = get_preset("dense_rods_50nm")
+    processed = preprocess(image, gaussian_sigma=preset.config.gaussian_sigma)
+    labels = segment_particles_from_config(processed, preset.config)
+    particles = measure_particles(labels, nm_per_pixel=0.23, config=preset.config)
+    rods = [p for p in particles if p.particle_class == ParticleClass.ROD]
+    assert len(rods) < 12
+
+
+def test_dense_rods_preset_keeps_clear_rods_on_grain():
+    from tem_rods.measure import measure_particles
+    from tem_rods.models import ParticleClass
+    from tem_rods.presets import get_preset
+    from tem_rods.segment import segment_particles_from_config
+
+    rng = np.random.default_rng(1)
+    image = rng.uniform(0.62, 0.82, (360, 420))
+    for cy, cx, rot in ((80, 110, 0.2), (170, 250, 0.9), (260, 160, -0.5)):
+        rr, cc = ellipse(cy, cx, 7, 30, rotation=rot)
+        image[rr, cc] = 0.10
+    preset = get_preset("dense_rods_50nm")
+    processed = preprocess(image, gaussian_sigma=preset.config.gaussian_sigma)
+    labels = segment_particles_from_config(processed, preset.config)
+    particles = measure_particles(labels, nm_per_pixel=0.23, config=preset.config)
+    rods = [p for p in particles if p.particle_class == ParticleClass.ROD]
+    assert 2 <= len(rods) < 25
 
 
 def test_segmentation_finishes_quickly_on_grainy_field():
