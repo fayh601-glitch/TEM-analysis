@@ -24,7 +24,20 @@ from tem_rods.measure import major_axis_angle_deg, measure_particles, summarize_
 from tem_rods.models import AnalysisConfig, AnalysisResult, ParticleClass
 from tem_rods.preprocess import crop_bottom_info_banner, crop_white_margins, preprocess
 from tem_rods.scale_bar import ScaleBarDetection, detect_scale_bar
-from tem_rods.segment import iter_region_contours_xy, segment_particles_from_config
+from tem_rods.segment import segment_particles_from_config
+
+try:
+    from tem_rods.segment import iter_region_contours_xy
+except ImportError:  # stale Cloud install of tem_rods.segment
+    from skimage.measure import find_contours as _find_contours
+
+    def iter_region_contours_xy(region):
+        minr, minc, _maxr, _maxc = region.bbox
+        crop = region.image.astype(float)
+        if crop.size == 0:
+            return
+        for contour in _find_contours(crop, 0.5):
+            yield contour[:, 1] + minc, contour[:, 0] + minr
 
 
 def _resolve_exclude_bbox(
