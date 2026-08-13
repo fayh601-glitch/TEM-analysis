@@ -18,7 +18,12 @@ import numpy as np
 from PIL import Image
 from skimage.measure import label, regionprops
 
-from tem_rods.calibrate import nm_per_pixel_from_scale_bar, validate_nm_per_pixel
+from tem_rods.calibrate import (
+    nm_per_pixel_from_cal_text,
+    nm_per_pixel_from_scale_bar,
+    validate_nm_per_pixel,
+)
+from tem_rods.preprocess import detect_bottom_info_banner
 
 
 @dataclass(frozen=True)
@@ -60,9 +65,15 @@ def detect_scale_bar(
         im = im / 255.0
 
     h, w = im.shape
-    row_start = int(h * (1.0 - search_bottom_fraction))
-    col_end = int(w * search_left_fraction)
-    roi = im[row_start:, :col_end]
+    banner_row = detect_bottom_info_banner(im)
+    if banner_row is not None:
+        # Instrument overlays put the scale bar in a full-width info strip.
+        row_start = banner_row
+        roi = im[row_start:, :]
+    else:
+        row_start = int(h * (1.0 - search_bottom_fraction))
+        col_end = int(w * search_left_fraction)
+        roi = im[row_start:, :col_end]
 
     dark_threshold = max_dark_value if max_dark_value is not None else 0.25
     if max_dark_value is not None and max_dark_value > 1.5:
@@ -85,7 +96,7 @@ def detect_scale_bar(
             binary,
             row_start=row_start,
             image_width=w,
-            max_bar_height_px=max_bar_height_px,
+            max_bar_height_px=14 if banner_row is not None else max_bar_height_px,
             min_bar_width_px=min_bar_width_px,
             min_bar_aspect=min_bar_aspect,
         ):
@@ -267,3 +278,90 @@ def _ocr_scale_bar_nm(
     if match:
         return float(match.group(1))
     return None
+
+
+def parse_embedded_nm_per_pixel(
+    source: str | Path | bytes,
+    *,
+    name: str = "",
+    image: np.ndarray | None = None,
+) -> float | None:
+    """
+    Read nm/pixel from AMT-style TIFF tags or burned-in ``Cal: … µm/pix`` text.
+
+    Used when the scale-bar line cannot be measured automatically.
+    """
+    text_blobs: list[str] = []
+    if name:
+        text_blobs.append(name)
+
+    data: bytes | None = None
+    if isinstance(source, (bytes, bytearray)):
+        data = bytes(source)
+    else:
+        path = Path(source)
+        text_blobs.append(path.name)
+        if path.exists():
+            try:
+                data = path.read_bytes()
+            except OSError:
+                data = None
+
+    if data:
+        text_blobs.extend(_tiff_text_blobs(data))
+
+    if image is not None:
+        ocr_text = _ocr_full_banner(image)
+        if ocr_text:
+            text_blobs.append(ocr_text)
+
+    for blob in text_blobs:
+        parsed = nm_per_pixel_from_cal_text(blob)
+        if parsed is None:
+            continue
+        try:
+            return validate_nm_per_pixel(parsed)
+        except ValueError:
+            continue
+    return None
+
+
+def _tiff_text_blobs(data: bytes) -> list[str]:
+    from io import BytesIO
+
+    blobs: list[str] = []
+    try:
+        with Image.open(BytesIO(data)) as img:
+            for key in ("description", "comment"):
+                val = img.info.get(key)
+                if isinstance(val, str) and val.strip():
+                    blobs.append(val)
+            tag = getattr(img, "tag_v2", None)
+            if tag is not None:
+                for idx in (270, 285, 315):  # ImageDescription, PageName, Artist
+                    if idx in tag:
+                        blobs.append(str(tag[idx]))
+    except Exception:
+        return blobs
+    return blobs
+
+
+def _ocr_full_banner(image: np.ndarray) -> str | None:
+    try:
+        import pytesseract
+    except ImportError:
+        return None
+
+    img = np.asarray(image, dtype=np.float64)
+    if img.max() > 1.5:
+        img = img / 255.0
+    start = detect_bottom_info_banner(img)
+    if start is None:
+        start = int(img.shape[0] * 0.75)
+    patch = (np.clip(img[start:], 0, 1) * 255.0).astype(np.uint8)
+    if patch.size == 0:
+        return None
+    try:
+        return pytesseract.image_to_string(patch, config="--psm 6")
+    except Exception:
+        return None

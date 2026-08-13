@@ -77,6 +77,7 @@ class AnalysisConfig:
     local_threshold_block_size: int = 35
     local_threshold_offset: float = 0.01
     crop_margins: bool = False
+    crop_info_banner: bool = True
     use_clahe: bool = False
     show_rejected_on_overlay: bool = True
     write_segmentation_debug: bool = False

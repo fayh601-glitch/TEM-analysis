@@ -9,7 +9,7 @@ These tests ensure preprocessing trims margins without affecting normal TEM PNGs
 import numpy as np
 from skimage.filters import threshold_otsu
 
-from tem_rods.preprocess import crop_white_margins, preprocess
+from tem_rods.preprocess import crop_bottom_info_banner, crop_white_margins, detect_bottom_info_banner, preprocess
 
 
 def test_crop_white_margins_trims_borders():
@@ -30,3 +30,30 @@ def test_preprocess_keeps_normal_tem_image_shape():
     image = np.random.default_rng(0).uniform(0.3, 0.8, (200, 200))
     processed = preprocess(image, gaussian_sigma=0.0)
     assert processed.shape == image.shape
+
+
+def test_detect_bottom_info_banner_finds_amt_strip():
+    rng = np.random.default_rng(2)
+    micro = rng.uniform(0.45, 0.70, (320, 480))
+    banner = np.ones((80, 480), dtype=np.float64) * 0.98
+    # Black filename / Cal text in the banner (not a full-white row).
+    banner[10:22, 20:220] = 0.05
+    banner[40:46, 30:150] = 0.0
+    image = np.vstack([micro, banner])
+
+    start = detect_bottom_info_banner(image)
+    assert start is not None
+    assert 310 <= start <= 330
+
+    cropped, row = crop_bottom_info_banner(image)
+    assert row == start
+    assert cropped.shape == (start, 480)
+    assert cropped.shape[0] == 320 or abs(cropped.shape[0] - 320) <= 10
+
+
+def test_detect_bottom_info_banner_ignores_normal_tem():
+    image = np.random.default_rng(3).uniform(0.35, 0.80, (240, 300))
+    assert detect_bottom_info_banner(image) is None
+    cropped, row = crop_bottom_info_banner(image)
+    assert row is None
+    assert cropped.shape == image.shape

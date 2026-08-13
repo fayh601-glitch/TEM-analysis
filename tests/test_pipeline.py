@@ -254,3 +254,43 @@ def test_analyze_image_writes_outputs(tmp_path):
     assert result.overlay_path is not None
     assert result.csv_path.exists()
     assert result.overlay_path.exists()
+
+
+def test_analyze_image_crops_amt_info_banner(tmp_path):
+    """White filename/Cal strip must not be counted as particles."""
+    from PIL import Image, ImageDraw
+    from skimage.draw import ellipse as draw_ellipse
+
+    micro_h, banner_h, w = 280, 70, 420
+    image = np.ones((micro_h + banner_h, w), dtype=np.float64) * 0.62
+    rr, cc = draw_ellipse(90, 140, 8, 28, rotation=np.deg2rad(15))
+    image[rr, cc] = 0.12
+    rr, cc = draw_ellipse(170, 260, 7, 24, rotation=np.deg2rad(-20))
+    image[rr, cc] = 0.10
+    image[micro_h:] = 0.98
+
+    u8 = (np.clip(image, 0, 1) * 255).astype(np.uint8)
+    pil = Image.fromarray(u8, mode="L")
+    draw = ImageDraw.Draw(pil)
+    draw.text((16, micro_h + 10), "CT01_CdSeRods_45minrxn_003.tif", fill=0)
+    draw.text((16, micro_h + 40), "Cal: 0.000231 um/pix   50 nm", fill=0)
+    draw.line([(30, micro_h + 38), (150, micro_h + 38)], fill=0, width=3)
+    path = tmp_path / "amt_banner.tif"
+    pil.save(path)
+
+    cfg = AnalysisConfig(
+        mask_bottom_fraction=0.12,
+        crop_info_banner=True,
+        split_touching_particles=False,
+        min_particle_area_px=40,
+        min_local_contrast=0.02,
+        analysis_mode=AnalysisMode.RODS,
+    )
+    result = analyze_image(path, 0.231, output_dir=tmp_path / "out", config=cfg)
+
+    assert any("info bar" in w.lower() for w in result.warnings)
+    assert result.image is not None
+    assert result.image.shape[0] <= micro_h + 5
+    assert len(result.particles) >= 1
+    for particle in result.particles:
+        assert particle.centroid_y < micro_h
