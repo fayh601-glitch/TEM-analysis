@@ -101,6 +101,41 @@ def test_filter_approved_by_length():
     assert n == 2
 
 
+def test_filter_approved_by_width():
+    from particle_review import filter_approved_by_size
+
+    particles = [
+        ParticleMeasurement(1, ParticleClass.ROD, 40.0, 2.0, 20.0, 0.9, 80.0, 0, 0, 10, 3, 40),
+        ParticleMeasurement(2, ParticleClass.ROD, 40.0, 5.0, 8.0, 0.9, 80.0, 0, 0, 10, 5, 40),
+        ParticleMeasurement(3, ParticleClass.ROD, 40.0, 12.0, 3.3, 0.9, 80.0, 0, 0, 10, 12, 40),
+    ]
+    kept, n = filter_approved_by_size(
+        particles, {1, 2, 3}, min_width_nm=3.0, max_width_nm=8.0
+    )
+    assert kept == {2}
+    assert n == 2
+
+
+def test_filter_approved_by_length_and_width():
+    from particle_review import filter_approved_by_size
+
+    particles = [
+        ParticleMeasurement(1, ParticleClass.ROD, 20.0, 4.0, 5.0, 0.9, 80.0, 0, 0, 10, 4, 40),
+        ParticleMeasurement(2, ParticleClass.ROD, 40.0, 4.0, 10.0, 0.9, 80.0, 0, 0, 10, 4, 40),
+        ParticleMeasurement(3, ParticleClass.ROD, 40.0, 15.0, 2.7, 0.9, 80.0, 0, 0, 10, 15, 40),
+    ]
+    kept, n = filter_approved_by_size(
+        particles,
+        {1, 2, 3},
+        min_length_nm=30.0,
+        max_length_nm=80.0,
+        min_width_nm=2.0,
+        max_width_nm=8.0,
+    )
+    assert kept == {2}
+    assert n == 2
+
+
 def test_particle_id_from_selection():
     class Sel:
         class selection:

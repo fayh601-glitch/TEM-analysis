@@ -47,15 +47,17 @@ def default_approved_ids(
     return approved
 
 
-def filter_approved_by_length(
+def filter_approved_by_size(
     particles: Iterable[ParticleMeasurement],
     approved_ids: set[int],
     *,
     min_length_nm: float | None = None,
     max_length_nm: float | None = None,
+    min_width_nm: float | None = None,
+    max_width_nm: float | None = None,
 ) -> tuple[set[int], int]:
     """
-    Keep only approved particles whose length_nm is within [min, max].
+    Keep only approved particles whose ellipse length and width are in range.
 
     Returns (updated_approved_ids, n_discarded_by_filter).
     """
@@ -70,8 +72,34 @@ def filter_approved_by_length(
         if max_length_nm is not None and p.length_nm > max_length_nm:
             discarded += 1
             continue
+        if min_width_nm is not None and p.width_nm < min_width_nm:
+            discarded += 1
+            continue
+        if max_width_nm is not None and p.width_nm > max_width_nm:
+            discarded += 1
+            continue
         kept.add(p.particle_id)
     return kept, discarded
+
+
+def filter_approved_by_length(
+    particles: Iterable[ParticleMeasurement],
+    approved_ids: set[int],
+    *,
+    min_length_nm: float | None = None,
+    max_length_nm: float | None = None,
+    min_width_nm: float | None = None,
+    max_width_nm: float | None = None,
+) -> tuple[set[int], int]:
+    """Alias for filter_approved_by_size (length and optional width)."""
+    return filter_approved_by_size(
+        particles,
+        approved_ids,
+        min_length_nm=min_length_nm,
+        max_length_nm=max_length_nm,
+        min_width_nm=min_width_nm,
+        max_width_nm=max_width_nm,
+    )
 
 
 def particles_to_rows(

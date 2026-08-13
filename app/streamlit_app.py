@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-dark-pixels-1"
+_APP_BUILD = "2026-08-13-width-filter-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -73,7 +73,7 @@ from particle_review import (  # noqa: E402
     approved_csv_bytes,
     build_review_figure,
     default_approved_ids,
-    filter_approved_by_length,
+    filter_approved_by_size,
     particle_id_from_plotly_selection,
     particles_to_rows,
     render_annotated_rgb,
@@ -849,24 +849,32 @@ if st.session_state.analysis_done and st.session_state.particles:
     if st.session_state.calibration_note:
         st.info(st.session_state.calibration_note)
 
-    st.markdown("##### Length filter (discard outliers)")
+    st.markdown("##### Size filter (discard outliers)")
     st.caption(
-        "After you see auto-detected lengths, set an allowed range. "
-        "Particles shorter or longer than this range are discarded (shown red)."
+        "After you see auto-detected sizes, set allowed **length** and **width** ranges. "
+        "Particles outside either range are discarded (shown red)."
     )
-    lengths = [p.length_nm for p in particles if p.particle_class != ParticleClass.REJECT]
+    sized = [p for p in particles if p.particle_class != ParticleClass.REJECT]
+    lengths = [p.length_nm for p in sized]
+    widths = [p.width_nm for p in sized]
     if lengths:
         st.caption(
-            f"Detected length range (non-reject): "
+            f"Detected length (non-reject): "
             f"{min(lengths):.1f}–{max(lengths):.1f} nm · "
             f"median {float(np.median(lengths)):.1f} nm"
         )
-    lf1, lf2, lf3 = st.columns([1, 1, 1])
+    if widths:
+        st.caption(
+            f"Detected width (non-reject): "
+            f"{min(widths):.1f}–{max(widths):.1f} nm · "
+            f"median {float(np.median(widths)):.1f} nm"
+        )
+    lf1, lf2, lf3, lf4 = st.columns(4)
     with lf1:
         min_len = st.number_input(
             "Min length (nm)",
             min_value=0.0,
-            value=float(st.session_state.get("filter_min_length_nm", 50.0)),
+            value=float(st.session_state.get("filter_min_length_nm", 0.0)),
             step=1.0,
             help="Discard particles shorter than this.",
         )
@@ -879,26 +887,46 @@ if st.session_state.analysis_done and st.session_state.particles:
             help="Discard particles longer than this.",
         )
     with lf3:
-        st.write("")
-        st.write("")
-        apply_len = st.button("Apply length filter", type="primary")
-    if apply_len:
+        min_wid = st.number_input(
+            "Min width (nm)",
+            min_value=0.0,
+            value=float(st.session_state.get("filter_min_width_nm", 0.0)),
+            step=0.5,
+            help="Discard particles thinner than this.",
+        )
+    with lf4:
+        max_wid = st.number_input(
+            "Max width (nm)",
+            min_value=0.0,
+            value=float(st.session_state.get("filter_max_width_nm", 50.0)),
+            step=0.5,
+            help="Discard particles thicker than this.",
+        )
+    apply_size = st.button("Apply length and width filter", type="primary")
+    if apply_size:
         if max_len < min_len:
             st.error("Max length must be ≥ min length.")
+        elif max_wid < min_wid:
+            st.error("Max width must be ≥ min width.")
         else:
             st.session_state.filter_min_length_nm = min_len
             st.session_state.filter_max_length_nm = max_len
-            # Start from all rods/dots, then apply range (so re-applying is predictable).
+            st.session_state.filter_min_width_nm = min_wid
+            st.session_state.filter_max_width_nm = max_wid
+            # Start from all rods/dots, then apply ranges (so re-applying is predictable).
             base = default_approved_ids(particles)
-            filtered, n_out = filter_approved_by_length(
+            filtered, n_out = filter_approved_by_size(
                 particles,
                 base,
                 min_length_nm=min_len,
                 max_length_nm=max_len,
+                min_width_nm=min_wid,
+                max_width_nm=max_wid,
             )
             st.session_state.approved_ids = filtered
             st.session_state.add_message = (
-                f"Length filter applied ({min_len:g}–{max_len:g} nm): "
+                f"Size filter applied (length {min_len:g}–{max_len:g} nm, "
+                f"width {min_wid:g}–{max_wid:g} nm): "
                 f"kept {len(filtered)}, discarded {n_out} outliers."
             )
             st.session_state.plot_nonce = st.session_state.get("plot_nonce", 0) + 1
