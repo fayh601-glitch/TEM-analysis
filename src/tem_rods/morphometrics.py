@@ -12,6 +12,56 @@ import math
 import numpy as np
 
 
+def principal_caliper_px(coords: np.ndarray) -> tuple[float, float]:
+    """
+    Length and width as spans along the particle's principal axes.
+
+    This matches ImageJ: a straight line along the rod and a perpendicular
+    line across it. Pixel-center projections are ~1 px short of an edge-to-edge
+    line, so 1 px is added to each span.
+    """
+    pts = np.asarray(coords, dtype=float)
+    if pts.ndim != 2 or len(pts) < 2:
+        return 0.0, 0.0
+    xy = np.column_stack([pts[:, 1], pts[:, 0]])
+    centered = xy - xy.mean(axis=0)
+    if len(xy) == 2:
+        length = float(np.hypot(*(xy[1] - xy[0]))) + 1.0
+        return length, 1.0
+    cov = np.cov(centered, rowvar=False)
+    cov = np.atleast_2d(cov)
+    if cov.shape != (2, 2) or not np.all(np.isfinite(cov)):
+        length = float(np.ptp(xy[:, 0])) + 1.0
+        width = float(np.ptp(xy[:, 1])) + 1.0
+        if width > length:
+            length, width = width, length
+        return length, width
+    evals, evecs = np.linalg.eigh(cov)
+    major = evecs[:, int(np.argmax(evals))]
+    minor = np.array([-major[1], major[0]], dtype=float)
+    length = float(np.ptp(centered @ major)) + 1.0
+    width = float(np.ptp(centered @ minor)) + 1.0
+    if width > length:
+        length, width = width, length
+    return length, max(width, 1e-6)
+
+
+def principal_axis_xy(coords: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return unit major and minor axis vectors in (x, y) image coordinates."""
+    pts = np.asarray(coords, dtype=float)
+    xy = np.column_stack([pts[:, 1], pts[:, 0]])
+    centered = xy - xy.mean(axis=0)
+    if len(xy) < 3:
+        return np.array([1.0, 0.0]), np.array([0.0, 1.0])
+    cov = np.atleast_2d(np.cov(centered, rowvar=False))
+    if cov.shape != (2, 2) or not np.all(np.isfinite(cov)):
+        return np.array([1.0, 0.0]), np.array([0.0, 1.0])
+    evals, evecs = np.linalg.eigh(cov)
+    major = evecs[:, int(np.argmax(evals))]
+    minor = np.array([-major[1], major[0]], dtype=float)
+    return major, minor
+
+
 def feret_diameters_px(coords: np.ndarray, *, n_angles: int = 180) -> tuple[float, float]:
     """
     Maximum and minimum Feret (caliper) diameters in pixels.

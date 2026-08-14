@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from skimage.measure import label, regionprops
 
 from tem_rods.distributions import fit_lognormal, sample_size_note
@@ -10,6 +11,7 @@ from tem_rods.morphometrics import (
     circularity_from_area_perimeter,
     equivalent_diameter_px,
     feret_diameters_px,
+    principal_caliper_px,
     region_morphometrics,
 )
 from tem_rods.measure import measure_particles
@@ -26,7 +28,49 @@ def test_circularity_circle_near_one():
     assert morph["feret_max_px"] > morph["feret_min_px"] * 0.8
 
 
-def test_feret_rod_max_gt_min():
+def test_principal_caliper_matches_rectangle_not_ellipse():
+    """ImageJ line tools measure the rod box, not the 4√λ moment ellipse.
+
+    For a filled rectangle, the moment ellipse is ~15% longer/wider.
+    """
+    img = np.zeros((80, 50), dtype=np.uint8)
+    img[10:60, 18:28] = 1  # 50 px long, 10 px wide
+    region = regionprops(label(img))[0]
+    length_px, width_px = principal_caliper_px(region.coords)
+    assert 49 <= length_px <= 52
+    assert 9 <= width_px <= 12
+    # Ellipse fit is systematically larger than the ImageJ-style lines.
+    assert region.major_axis_length > length_px + 3
+    assert region.minor_axis_length > width_px + 0.5
+
+
+def test_imagej_style_nm_on_amt_calibration():
+    """A 68×20 px rod at 0.231 nm/px is ~15.7×4.6 nm (user ImageJ means)."""
+    img = np.zeros((90, 80), dtype=np.uint8)
+    img[11:79, 30:50] = 1  # 68 px long, 20 px wide
+    labels = label(img)
+    particles = measure_particles(labels, nm_per_pixel=0.231)
+    assert len(particles) == 1
+    p = particles[0]
+    assert p.length_nm == pytest.approx(15.708, abs=0.4)
+    assert p.width_nm == pytest.approx(4.62, abs=0.4)
+    # Ellipse would be ~15% high vs those ImageJ line means.
+    assert p.ellipse_length_nm > p.length_nm + 1.0
+
+
+def test_size_gates_reject_too_wide_blobs():
+    img = np.zeros((80, 80), dtype=np.uint8)
+    img[20:60, 10:70] = 1  # ~40×60 blob, too wide to be one nanorod
+    labels = label(img)
+    cfg = AnalysisConfig(
+        analysis_mode=AnalysisMode.RODS,
+        min_length_nm=8.0,
+        max_length_nm=32.0,
+        min_width_nm=2.0,
+        max_width_nm=9.0,
+    )
+    particles = measure_particles(labels, nm_per_pixel=0.231, config=cfg)
+    assert particles[0].particle_class == ParticleClass.REJECT
     img = np.zeros((60, 40), dtype=np.uint8)
     img[5:55, 15:25] = 1
     coords = regionprops(label(img))[0].coords

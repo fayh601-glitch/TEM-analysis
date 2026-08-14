@@ -88,6 +88,8 @@ def test_dense_rods_preset_registered():
     assert preset.config.min_local_contrast >= 0.04
     assert preset.config.min_darkness >= 0.10
     assert preset.config.min_length_nm is not None
+    assert preset.config.max_width_nm is not None
+    assert preset.config.max_width_nm <= 10.0
 
 
 def test_dense_rods_alias_shares_config():

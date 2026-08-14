@@ -3,8 +3,8 @@ Particle Measurer — turn each labeled blob into length, width, and shape stats
 ==============================================================================
 
 This file walks through every numbered region in a segmented image and computes
-its size in pixels and nanometers. Length and width come from the fitted ellipse
-axes so they match what you see drawn on the overlay. Feret diameters,
+its size in pixels and nanometers. Length and width are ImageJ-style calipers
+(a line along the rod and a perpendicular line across it). Feret diameters,
 circularity, and equivalent-area diameter follow Aviles & Lear TEM reporting.
 """
 
@@ -16,15 +16,16 @@ from skimage.measure import regionprops
 from tem_rods.classify import apply_analysis_mode, classify_shape_raw
 from tem_rods.distributions import fit_lognormal
 from tem_rods.models import AnalysisConfig, ParticleClass, ParticleMeasurement
-from tem_rods.morphometrics import region_morphometrics
+from tem_rods.morphometrics import principal_caliper_px, region_morphometrics
 
 
 def _length_width_px(region) -> tuple[float, float]:
-    """Extract length (long axis) and width (short axis) in pixels from a region."""
-    length_px = float(region.major_axis_length)
-    width_px = float(region.minor_axis_length)
+    """ImageJ-style length (along rod) and width (across rod) in pixels."""
+    length_px, width_px = principal_caliper_px(region.coords)
+    if length_px <= 0:
+        length_px = float(region.major_axis_length)
     if width_px <= 0:
-        width_px = float(getattr(region, "feret_diameter_min", 0.0) or region.axis_minor_length)
+        width_px = float(getattr(region, "minor_axis_length", 0.0) or 1e-6)
     return length_px, width_px
 
 
@@ -60,6 +61,8 @@ def measure_from_region(
     morph = region_morphometrics(region)
     area_px = int(region.area)
     cy, cx = region.centroid
+    ell_len_px = float(region.major_axis_length)
+    ell_wid_px = float(region.minor_axis_length) or 1e-6
     return ParticleMeasurement(
         particle_id=particle_id,
         particle_class=particle_class,
@@ -77,6 +80,8 @@ def measure_from_region(
         feret_min_nm=morph["feret_min_px"] * nm_per_pixel,
         circularity=morph["circularity"],
         equiv_diameter_nm=morph["equiv_diameter_px"] * nm_per_pixel,
+        ellipse_length_nm=ell_len_px * nm_per_pixel,
+        ellipse_width_nm=ell_wid_px * nm_per_pixel,
     )
 
 
@@ -118,6 +123,12 @@ def measure_particles(
             particle_class=particle_class,
         )
         if cfg.min_length_nm is not None and measurement.length_nm < cfg.min_length_nm:
+            measurement.particle_class = ParticleClass.REJECT
+        if cfg.max_length_nm is not None and measurement.length_nm > cfg.max_length_nm:
+            measurement.particle_class = ParticleClass.REJECT
+        if cfg.min_width_nm is not None and measurement.width_nm < cfg.min_width_nm:
+            measurement.particle_class = ParticleClass.REJECT
+        if cfg.max_width_nm is not None and measurement.width_nm > cfg.max_width_nm:
             measurement.particle_class = ParticleClass.REJECT
         measurements.append(measurement)
 

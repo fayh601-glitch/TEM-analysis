@@ -112,8 +112,8 @@ def particles_to_rows(
             {
                 "particle_id": p.particle_id,
                 "class": p.particle_class.value,
-                "length_nm (ellipse)": round(p.length_nm, 2),
-                "width_nm (ellipse)": round(p.width_nm, 2),
+                "length_nm": round(p.length_nm, 2),
+                "width_nm": round(p.width_nm, 2),
                 "feret_max_nm": round(float(getattr(p, "feret_max_nm", 0.0) or 0.0), 2),
                 "feret_min_nm": round(float(getattr(p, "feret_min_nm", 0.0) or 0.0), 2),
                 "equiv_diameter_nm": round(
@@ -306,7 +306,7 @@ def build_review_figure(
             status = "approved" if approved else "discarded"
             texts.append(
                 f"#{p.particle_id} {p.particle_class.value}<br>"
-                f"ellipse {p.length_nm:.1f}×{p.width_nm:.1f} nm<br>"
+                f"caliper {p.length_nm:.1f}×{p.width_nm:.1f} nm<br>"
                 f"Feret {p.feret_max_nm:.1f}/{p.feret_min_nm:.1f} nm · "
                 f"circ {p.circularity:.2f}<br>"
                 f"<b>{status}</b> — click to toggle"
@@ -553,6 +553,7 @@ def render_annotated_rgb(
     if labels is None:
         return rgb
 
+    from tem_rods.morphometrics import principal_axis_xy
     from PIL import Image as PILImage, ImageDraw
 
     pil = PILImage.fromarray(rgb)
@@ -580,7 +581,30 @@ def render_annotated_rgb(
                     pts.append(pts[0])
                 draw.line(pts, fill=color, width=2)
         cy, cx = region.centroid
-        draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=color)
+        major, minor = principal_axis_xy(region.coords)
+        hl = float(particle.length_px) / 2.0
+        hw = float(particle.width_px) / 2.0
+        draw.line(
+            (
+                cx - major[0] * hl,
+                cy - major[1] * hl,
+                cx + major[0] * hl,
+                cy + major[1] * hl,
+            ),
+            fill=color,
+            width=2,
+        )
+        draw.line(
+            (
+                cx - minor[0] * hw,
+                cy - minor[1] * hw,
+                cx + minor[0] * hw,
+                cy + minor[1] * hw,
+            ),
+            fill=color,
+            width=2,
+        )
+        draw.ellipse((cx - 3, cy - 3, cx + 3, cy + 3), fill=color)
     return np.asarray(pil)
 
 

@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-14-red-green-png-1"
+_APP_BUILD = "2026-08-14-imagej-caliper-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -853,6 +853,7 @@ if st.session_state.analysis_done and st.session_state.particles:
     st.markdown("##### Size filter (discard outliers)")
     st.caption(
         "After you see auto-detected sizes, set allowed **length** and **width** ranges. "
+        "These are ImageJ-style calipers (line along the rod and across it). "
         "Particles outside either range are discarded (shown red)."
     )
     sized = [p for p in particles if p.particle_class != ParticleClass.REJECT]
@@ -995,9 +996,9 @@ if st.session_state.analysis_done and st.session_state.particles:
     with m1:
         if "mean_rod_length_nm" in stats:
             st.metric(
-                "Mean rod length (ellipse, nm)",
+                "Mean rod length (nm)",
                 f"{stats['mean_rod_length_nm']:.1f}",
-                help="Fitted ellipse major axis — matches overlay drawing.",
+                help="Tip-to-tip caliper along the rod (same idea as an ImageJ length line).",
             )
         elif "mean_dot_diameter_nm" in stats:
             st.metric(
@@ -1008,9 +1009,9 @@ if st.session_state.analysis_done and st.session_state.particles:
     with m2:
         if "mean_rod_width_nm" in stats:
             st.metric(
-                "Mean rod width (ellipse, nm)",
+                "Mean rod width (nm)",
                 f"{stats['mean_rod_width_nm']:.1f}",
-                help="Fitted ellipse minor axis.",
+                help="Perpendicular caliper across the rod (same idea as an ImageJ width line).",
             )
         elif "mean_dot_feret_max_nm" in stats:
             st.metric(
@@ -1211,7 +1212,8 @@ if st.session_state.analysis_done and st.session_state.particles:
     st.subheader("Particle list")
     st.caption(
         "Uncheck **approved** to discard. "
-        "**length/width** = ellipse axes; **Feret** = caliper diameters; "
+        "**length/width** = ImageJ-style calipers (line along the rod and across it); "
+        "**Feret** = min/max caliper over all angles; "
         "**equiv_diameter** = 2√(A/π); **circularity** = 4πA/P². "
         "Use **Add missed particle** mode above for missed detections."
     )

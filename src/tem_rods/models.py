@@ -95,6 +95,9 @@ class AnalysisConfig:
     merge_warning_mean_median_ratio: float = 2.5
     max_image_side_px: int = 1600
     min_length_nm: float | None = None
+    max_length_nm: float | None = None
+    min_width_nm: float | None = None
+    max_width_nm: float | None = None
 
 
 @dataclass
@@ -102,15 +105,15 @@ class ParticleMeasurement:
     """
     Per-particle size and shape.
 
-    ``length_nm`` / ``width_nm`` are ellipse major / minor axes (how the overlay
-    is drawn). Prefer Feret diameters and equiv. diameter for size reporting
-    when comparing to Aviles & Lear–style TEM analysis.
+    ``length_nm`` / ``width_nm`` are ImageJ-style calipers: a straight line
+    along the rod and a perpendicular line across it (not an ellipse fit).
+    Ellipse axes are stored separately for overlay/debug.
     """
 
     particle_id: int
     particle_class: ParticleClass
-    length_nm: float  # ellipse major axis (nm)
-    width_nm: float  # ellipse minor axis (nm)
+    length_nm: float  # caliper along the rod (nm), ImageJ-style
+    width_nm: float  # caliper across the rod (nm), ImageJ-style
     aspect_ratio: float  # ellipse major / minor
     eccentricity: float
     area_nm2: float
@@ -124,6 +127,8 @@ class ParticleMeasurement:
     feret_min_nm: float = 0.0  # minimum caliper diameter
     circularity: float = 0.0  # 4πA/P² (1 = circle)
     equiv_diameter_nm: float = 0.0  # 2√(A/π) from projected area
+    ellipse_length_nm: float = 0.0  # moment-ellipse major axis (nm)
+    ellipse_width_nm: float = 0.0  # moment-ellipse minor axis (nm)
 
 
 @dataclass

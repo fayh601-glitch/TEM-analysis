@@ -124,6 +124,9 @@ _DENSE_RODS_50NM_CONFIG = AnalysisConfig(
     min_solidity=0.52,
     min_extent=0.20,
     min_length_nm=8.0,
+    max_length_nm=32.0,
+    min_width_nm=2.0,
+    max_width_nm=9.0,
     analysis_mode=AnalysisMode.RODS,
     show_rejected_on_overlay=False,
 )
