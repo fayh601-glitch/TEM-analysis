@@ -44,18 +44,19 @@ def test_principal_caliper_matches_rectangle_not_ellipse():
     assert region.minor_axis_length > width_px + 0.5
 
 
-def test_imagej_style_nm_on_amt_calibration():
-    """A 68×20 px rod at 0.231 nm/px is ~15.7×4.6 nm (user ImageJ means)."""
+def test_reported_length_uses_ellipse_not_tight_caliper():
+    """Dark-core calipers run short on TEM rods; ellipse axes matched ImageJ ~15.5 nm."""
     img = np.zeros((90, 80), dtype=np.uint8)
     img[11:79, 30:50] = 1  # 68 px long, 20 px wide
     labels = label(img)
+    region = regionprops(labels)[0]
     particles = measure_particles(labels, nm_per_pixel=0.231)
-    assert len(particles) == 1
     p = particles[0]
-    assert p.length_nm == pytest.approx(15.708, abs=0.4)
-    assert p.width_nm == pytest.approx(4.62, abs=0.4)
-    # Ellipse would be ~15% high vs those ImageJ line means.
-    assert p.ellipse_length_nm > p.length_nm + 1.0
+    assert p.length_nm == pytest.approx(region.major_axis_length * 0.231, abs=0.05)
+    assert p.width_nm == pytest.approx(region.minor_axis_length * 0.231, abs=0.05)
+    cal_len, _cal_w = principal_caliper_px(region.coords)
+    # Tight caliper is shorter than the ellipse length we report.
+    assert p.length_px > cal_len
 
 
 def test_size_gates_reject_too_wide_blobs():
@@ -71,6 +72,9 @@ def test_size_gates_reject_too_wide_blobs():
     )
     particles = measure_particles(labels, nm_per_pixel=0.231, config=cfg)
     assert particles[0].particle_class == ParticleClass.REJECT
+
+
+def test_feret_rod_max_gt_min():
     img = np.zeros((60, 40), dtype=np.uint8)
     img[5:55, 15:25] = 1
     coords = regionprops(label(img))[0].coords

@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-14-imagej-caliper-1"
+_APP_BUILD = "2026-08-14-ellipse-length-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -853,7 +853,6 @@ if st.session_state.analysis_done and st.session_state.particles:
     st.markdown("##### Size filter (discard outliers)")
     st.caption(
         "After you see auto-detected sizes, set allowed **length** and **width** ranges. "
-        "These are ImageJ-style calipers (line along the rod and across it). "
         "Particles outside either range are discarded (shown red)."
     )
     sized = [p for p in particles if p.particle_class != ParticleClass.REJECT]
@@ -998,7 +997,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             st.metric(
                 "Mean rod length (nm)",
                 f"{stats['mean_rod_length_nm']:.1f}",
-                help="Tip-to-tip caliper along the rod (same idea as an ImageJ length line).",
+                help="Fitted ellipse length along the rod. On TEM images this tracks ImageJ length lines more closely than a tight mask caliper.",
             )
         elif "mean_dot_diameter_nm" in stats:
             st.metric(
@@ -1011,7 +1010,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             st.metric(
                 "Mean rod width (nm)",
                 f"{stats['mean_rod_width_nm']:.1f}",
-                help="Perpendicular caliper across the rod (same idea as an ImageJ width line).",
+                help="Fitted ellipse width across the rod.",
             )
         elif "mean_dot_feret_max_nm" in stats:
             st.metric(
@@ -1212,7 +1211,7 @@ if st.session_state.analysis_done and st.session_state.particles:
     st.subheader("Particle list")
     st.caption(
         "Uncheck **approved** to discard. "
-        "**length/width** = ImageJ-style calipers (line along the rod and across it); "
+        "**length/width** = ellipse axes (ImageJ-comparable on TEM rods); "
         "**Feret** = min/max caliper over all angles; "
         "**equiv_diameter** = 2√(A/π); **circularity** = 4πA/P². "
         "Use **Add missed particle** mode above for missed detections."

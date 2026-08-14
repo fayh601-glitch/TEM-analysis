@@ -306,7 +306,7 @@ def build_review_figure(
             status = "approved" if approved else "discarded"
             texts.append(
                 f"#{p.particle_id} {p.particle_class.value}<br>"
-                f"caliper {p.length_nm:.1f}×{p.width_nm:.1f} nm<br>"
+                f"ellipse {p.length_nm:.1f}×{p.width_nm:.1f} nm<br>"
                 f"Feret {p.feret_max_nm:.1f}/{p.feret_min_nm:.1f} nm · "
                 f"circ {p.circularity:.2f}<br>"
                 f"<b>{status}</b> — click to toggle"

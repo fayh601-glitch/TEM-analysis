@@ -105,15 +105,15 @@ class ParticleMeasurement:
     """
     Per-particle size and shape.
 
-    ``length_nm`` / ``width_nm`` are ImageJ-style calipers: a straight line
-    along the rod and a perpendicular line across it (not an ellipse fit).
-    Ellipse axes are stored separately for overlay/debug.
+    ``length_nm`` / ``width_nm`` are fitted ellipse major / minor axes.
+    On TEM nanorods this tracks ImageJ length/width lines more closely than a
+    caliper on the dark-core mask, which runs short.
     """
 
     particle_id: int
     particle_class: ParticleClass
-    length_nm: float  # caliper along the rod (nm), ImageJ-style
-    width_nm: float  # caliper across the rod (nm), ImageJ-style
+    length_nm: float  # ellipse major axis (nm)
+    width_nm: float  # ellipse minor axis (nm)
     aspect_ratio: float  # ellipse major / minor
     eccentricity: float
     area_nm2: float

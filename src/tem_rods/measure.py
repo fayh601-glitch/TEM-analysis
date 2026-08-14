@@ -3,9 +3,9 @@ Particle Measurer — turn each labeled blob into length, width, and shape stats
 ==============================================================================
 
 This file walks through every numbered region in a segmented image and computes
-its size in pixels and nanometers. Length and width are ImageJ-style calipers
-(a line along the rod and a perpendicular line across it). Feret diameters,
-circularity, and equivalent-area diameter follow Aviles & Lear TEM reporting.
+its size in pixels and nanometers. Length and width are the fitted ellipse
+axes. On TEM nanorods the binary mask is the dark core, so those axes match
+hand-drawn ImageJ lines better than a tight caliper on the same mask.
 """
 
 from __future__ import annotations
@@ -16,16 +16,15 @@ from skimage.measure import regionprops
 from tem_rods.classify import apply_analysis_mode, classify_shape_raw
 from tem_rods.distributions import fit_lognormal
 from tem_rods.models import AnalysisConfig, ParticleClass, ParticleMeasurement
-from tem_rods.morphometrics import principal_caliper_px, region_morphometrics
+from tem_rods.morphometrics import region_morphometrics
 
 
 def _length_width_px(region) -> tuple[float, float]:
-    """ImageJ-style length (along rod) and width (across rod) in pixels."""
-    length_px, width_px = principal_caliper_px(region.coords)
-    if length_px <= 0:
-        length_px = float(region.major_axis_length)
+    """Ellipse major/minor axes in pixels (reported length and width)."""
+    length_px = float(region.major_axis_length)
+    width_px = float(region.minor_axis_length)
     if width_px <= 0:
-        width_px = float(getattr(region, "minor_axis_length", 0.0) or 1e-6)
+        width_px = float(getattr(region, "feret_diameter_min", 0.0) or region.axis_minor_length or 1e-6)
     return length_px, width_px
 
 
