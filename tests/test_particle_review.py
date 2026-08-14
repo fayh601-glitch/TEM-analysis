@@ -144,3 +144,25 @@ def test_particle_id_from_selection():
     assert particle_id_from_plotly_selection(Sel()) == 7
     assert particle_id_from_plotly_selection({"selection": {"points": [{"customdata": 3}]}}) == 3
     assert particle_id_from_plotly_selection(None) is None
+
+
+def test_review_overlay_png_includes_green_keep_and_red_exclude():
+    import numpy as np
+    from particle_review import render_annotated_rgb, review_overlay_png_bytes
+
+    image = np.full((80, 90), 0.75, dtype=np.float64)
+    labels = np.zeros((80, 90), dtype=np.int32)
+    labels[15:28, 10:40] = 1
+    labels[50:63, 45:80] = 2
+    particles = [
+        ParticleMeasurement(1, ParticleClass.ROD, 40.0, 5.0, 8.0, 0.9, 80.0, 21.0, 25.0, 20, 5, 200),
+        ParticleMeasurement(2, ParticleClass.ROD, 40.0, 5.0, 8.0, 0.9, 80.0, 56.0, 62.0, 20, 5, 200),
+    ]
+    rgb = render_annotated_rgb(image, particles, {1}, labels=labels, show_rejects=True)
+    greenish = (rgb[:, :, 1] > rgb[:, :, 0] + 30) & (rgb[:, :, 1] > rgb[:, :, 2] + 30)
+    reddish = (rgb[:, :, 0] > rgb[:, :, 1] + 30) & (rgb[:, :, 0] > rgb[:, :, 2] + 30)
+    assert greenish.any()
+    assert reddish.any()
+    png = review_overlay_png_bytes(image, particles, {1}, labels=labels)
+    assert png.startswith(b"\x89PNG")
+    assert len(png) > 100

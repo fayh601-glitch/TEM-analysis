@@ -545,8 +545,9 @@ def render_annotated_rgb(
     labels: np.ndarray | None = None,
     *,
     show_rejects: bool = True,
+    include_discarded: bool = True,
 ) -> np.ndarray:
-    """RGB overlay image for click-to-add interaction."""
+    """RGB overlay: green = keep, red = exclude."""
     gray = _as_float_gray(image)
     rgb = (np.stack([gray, gray, gray], axis=-1) * 255).astype(np.uint8)
     if labels is None:
@@ -562,19 +563,48 @@ def render_annotated_rgb(
         particle = by_id.get(region.label)
         if particle is None:
             continue
-        if particle.particle_class == ParticleClass.REJECT and not show_rejects:
-            continue
         approved = particle.particle_id in approved_ids
-        if particle.particle_class == ParticleClass.REJECT:
-            color = (255, 140, 0)
-        elif approved:
-            color = (0, 200, 100)
-        else:
-            color = (200, 50, 50)
+        if not approved and not include_discarded:
+            continue
+        if (
+            particle.particle_class == ParticleClass.REJECT
+            and not show_rejects
+            and not approved
+        ):
+            continue
+        color = (0, 200, 100) if approved else (220, 40, 40)
         for xs, ys in _iter_region_contours_xy(region):
             pts = list(zip(xs.tolist(), ys.tolist()))
             if len(pts) >= 2:
+                if pts[0] != pts[-1]:
+                    pts.append(pts[0])
                 draw.line(pts, fill=color, width=2)
         cy, cx = region.centroid
         draw.ellipse((cx - 4, cy - 4, cx + 4, cy + 4), fill=color)
     return np.asarray(pil)
+
+
+def review_overlay_png_bytes(
+    image: np.ndarray,
+    particles: list[ParticleMeasurement],
+    approved_ids: set[int],
+    labels: np.ndarray | None = None,
+    *,
+    show_rejects: bool = True,
+) -> bytes:
+    """PNG of the review overlay with green keep and red exclude outlines."""
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    rgb = render_annotated_rgb(
+        image,
+        particles,
+        approved_ids,
+        labels=labels,
+        show_rejects=show_rejects,
+        include_discarded=True,
+    )
+    buf = BytesIO()
+    PILImage.fromarray(rgb).save(buf, format="PNG")
+    return buf.getvalue()

@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-13-width-filter-1"
+_APP_BUILD = "2026-08-14-red-green-png-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -77,6 +77,7 @@ from particle_review import (  # noqa: E402
     particle_id_from_plotly_selection,
     particles_to_rows,
     render_annotated_rgb,
+    review_overlay_png_bytes,
     summarize_approved,
     toggle_particle,
 )
@@ -1240,12 +1241,24 @@ if st.session_state.analysis_done and st.session_state.particles:
             mime="text/csv",
         )
     with d2:
-        if st.session_state.overlay_bytes:
+        png_bytes = None
+        if st.session_state.image is not None and st.session_state.labels is not None:
+            png_bytes = review_overlay_png_bytes(
+                st.session_state.image,
+                particles,
+                set(st.session_state.approved_ids),
+                labels=st.session_state.labels,
+                show_rejects=True,
+            )
+        elif st.session_state.overlay_bytes:
+            png_bytes = st.session_state.overlay_bytes
+        if png_bytes:
             st.download_button(
-                "Download original overlay PNG",
-                data=st.session_state.overlay_bytes,
-                file_name=f"{st.session_state.stem}_overlay.png",
+                "Download overlay PNG (green = keep, red = exclude)",
+                data=png_bytes,
+                file_name=f"{st.session_state.stem}_review_overlay.png",
                 mime="image/png",
+                help="Includes both kept (green) and excluded (red) outlines.",
             )
 
     for warning in st.session_state.warnings or []:
