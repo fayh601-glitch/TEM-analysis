@@ -39,6 +39,13 @@ def classify_shape_raw(
         and aspect_ratio <= cfg.max_aspect_ratio_dot
     ):
         return ParticleClass.DOT
+    if (
+        getattr(cfg, "accept_ambiguous_as_dot", False)
+        and aspect_ratio < cfg.min_aspect_ratio_rod
+    ):
+        # Tiny pixelated dots often fail the roundness gates even when they
+        # are visually spherical. Keep them as dots unless they are rod-like.
+        return ParticleClass.DOT
     return ParticleClass.REJECT
 
 

@@ -446,3 +446,32 @@ def test_fay_preset_does_not_merge_nearby_small_dots(tmp_path):
         assert near_first, f"missing dot at {(y1, x1)}"
         assert near_second, f"missing dot at {(y2, x2)}"
         assert near_first[0].particle_id != near_second[0].particle_id
+
+
+def test_fay_preset_counts_slightly_irregular_small_dots(tmp_path):
+    """Pixelated small dots must be kept as dots, not orange rejects."""
+    from tem_rods.presets import get_preset
+
+    image = np.full((180, 200), 0.70, dtype=np.float64)
+    rng = np.random.default_rng(4)
+    image += rng.normal(0, 0.012, image.shape)
+    for cy, cx, ry, rx in ((50, 50, 5, 7), (50, 130, 6, 6), (120, 80, 4, 6), (125, 150, 5, 5)):
+        rr, cc = ellipse(cy, cx, ry, rx)
+        image[rr, cc] = 0.12
+    image = np.clip(image, 0, 1)
+    path = tmp_path / "irregular_dots.png"
+    from PIL import Image as PILImage
+
+    PILImage.fromarray((image * 255).astype(np.uint8), mode="L").save(path)
+    result = analyze_image(
+        path,
+        0.50,
+        output_dir=tmp_path / "out",
+        config=get_preset("fay_tem_fall26").config,
+        save_outputs=False,
+    )
+    dots = [p for p in result.particles if p.particle_class == ParticleClass.DOT]
+    rejects = [p for p in result.particles if p.particle_class == ParticleClass.REJECT]
+    assert len(dots) >= 3
+    assert len(dots) >= len(rejects)
+    assert np.median([p.equiv_diameter_nm for p in dots]) > 3.0

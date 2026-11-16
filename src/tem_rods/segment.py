@@ -46,6 +46,9 @@ def segment_particles(
     local_threshold_block_size: int = 35,
     local_threshold_offset: float = 0.01,
     min_darkness: float = 0.08,
+    dark_sigma_k: float = 2.8,
+    edge_grow_px: int = 0,
+    edge_darkness: float | None = None,
     exclude_bbox: tuple[int, int, int, int] | None = None,
 ) -> np.ndarray:
     """
@@ -60,6 +63,7 @@ def segment_particles(
         local_threshold_block_size=local_threshold_block_size,
         local_threshold_offset=local_threshold_offset,
         min_darkness=min_darkness,
+        dark_sigma_k=dark_sigma_k,
     )
     # Remove tiny specks — real nanorods are larger than a few pixels across.
     binary = morphology.remove_small_objects(binary, min_size=min_particle_area_px)
@@ -103,6 +107,18 @@ def segment_particles(
             split_min_width_px=split_min_width_px,
             split_watershed_min_distance=split_watershed_min_distance,
             min_piece_area_px=piece_area,
+        )
+
+    if edge_grow_px and edge_grow_px > 0:
+        labels = expand_labels_to_gray_edges(
+            labels,
+            image,
+            max_px=int(edge_grow_px),
+            edge_darkness=(
+                float(edge_darkness)
+                if edge_darkness is not None
+                else 0.5 * float(min_darkness)
+            ),
         )
 
     return _filter_regions(
@@ -150,6 +166,9 @@ def segment_particles_from_config(
         local_threshold_block_size=config.local_threshold_block_size,
         local_threshold_offset=config.local_threshold_offset,
         min_darkness=getattr(config, "min_darkness", 0.08),
+        dark_sigma_k=getattr(config, "dark_sigma_k", 2.8),
+        edge_grow_px=getattr(config, "edge_grow_px", 0),
+        edge_darkness=getattr(config, "edge_darkness", None),
         exclude_bbox=bbox,
     )
 
@@ -294,7 +313,12 @@ def _mask_bbox(
     return masked
 
 
-def _threshold_dark_particles(image: np.ndarray, *, min_darkness: float) -> np.ndarray:
+def _threshold_dark_particles(
+    image: np.ndarray,
+    *,
+    min_darkness: float,
+    dark_sigma_k: float = 2.8,
+) -> np.ndarray:
     """Keep only pixels clearly darker than the carbon-film background.
 
     Film grain sits a few percent below the median. Nanorods are much darker.
@@ -309,8 +333,36 @@ def _threshold_dark_particles(image: np.ndarray, *, min_darkness: float) -> np.n
     film_med = float(np.median(film))
     mad = float(np.median(np.abs(film - film_med)))
     sigma = 1.4826 * mad if mad > 1e-6 else float(max(np.std(film), 1e-3))
-    offset = max(float(min_darkness), 2.8 * sigma)
+    offset = max(float(min_darkness), float(dark_sigma_k) * sigma)
     return image < (median - offset)
+
+
+def expand_labels_to_gray_edges(
+    labels: np.ndarray,
+    image: np.ndarray,
+    *,
+    max_px: int,
+    edge_darkness: float,
+) -> np.ndarray:
+    """
+    Grow each dark core a few pixels into its gray halo without merging neighbors.
+
+    TEM dots are darkest in the center and fade at the edge. Measuring only the
+    black core underestimates diameter. Watershed from the original labels keeps
+    touching particles separate while the halo is included.
+    """
+    if max_px <= 0 or int(labels.max()) == 0:
+        return labels
+    median = float(np.median(image))
+    core = labels > 0
+    loose = image < (median - float(edge_darkness))
+    grown = core.copy()
+    for _ in range(int(max_px)):
+        grown = morphology.binary_dilation(grown, morphology.disk(1)) & (loose | core)
+    grown = grown | core
+    distance = ndi.distance_transform_edt(grown)
+    expanded = segmentation.watershed(-distance, labels, mask=grown)
+    return expanded
 
 
 def _binarize_particles(
@@ -321,6 +373,7 @@ def _binarize_particles(
     local_threshold_block_size: int,
     local_threshold_offset: float,
     min_darkness: float = 0.08,
+    dark_sigma_k: float = 2.8,
 ) -> np.ndarray:
     mode = threshold_mode
     mode_value = mode.value if isinstance(mode, ThresholdMode) else str(mode)
@@ -347,7 +400,9 @@ def _binarize_particles(
         )
         return image < local_thresh
     if mode == ThresholdMode.DARK or mode_value == "dark":
-        return _threshold_dark_particles(image, min_darkness=min_darkness)
+        return _threshold_dark_particles(
+            image, min_darkness=min_darkness, dark_sigma_k=dark_sigma_k
+        )
     thresh = float(threshold_otsu(image))
     return image < thresh
 
@@ -398,7 +453,10 @@ def _filter_regions(
         if not crop_mask.any():
             continue
         # Drop film-grain blobs: they are not much darker than the whole field.
-        if float(crop_img[crop_mask].mean()) > background - min_darkness:
+        # Use the darker core (30th percentile) so a gray edge halo does not
+        # make a real particle look too bright.
+        core_level = float(np.percentile(crop_img[crop_mask], 30))
+        if core_level > background - min_darkness:
             continue
         if _local_contrast(crop_img, crop_mask) < min_local_contrast:
             continue

@@ -63,6 +63,14 @@ class AnalysisConfig:
     # Particle mean intensity must be this much below the image median (0–1).
     # Carbon-film grain is only a few percent below the median; nanorods are much darker.
     min_darkness: float = 0.08
+    # Extra multiplier on film MAD for the dark-core threshold (lower = more sensitive).
+    dark_sigma_k: float = 2.8
+    # After cores are found, grow this many pixels into the gray particle halo.
+    edge_grow_px: int = 0
+    # Gray-edge intensity offset (0–1). None → 0.5 * min_darkness.
+    edge_darkness: float | None = None
+    # In dots mode, keep slightly irregular blobs instead of marking them reject.
+    accept_ambiguous_as_dot: bool = False
     mask_bottom_fraction: float = 0.12
     use_scale_bar_bbox_mask: bool = True
     expected_scale_bar_nm: float | None = None

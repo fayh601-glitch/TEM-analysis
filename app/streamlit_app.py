@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-11-16-fay-dots-2"
+_APP_BUILD = "2026-11-16-fay-dots-3"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -343,6 +343,7 @@ def _run_analysis(
     show_rejected: bool,
     manual_scale_bar_px: float | None = None,
     embedded_nm_per_pixel: float | None = None,
+    config_overrides: dict | None = None,
 ) -> None:
     session_dir = _ensure_session_dir()
     out_dir = session_dir / "outputs"
@@ -354,6 +355,8 @@ def _run_analysis(
         show_rejected_on_overlay=show_rejected,
         write_segmentation_debug=False,
     )
+    if config_overrides:
+        config = replace(config, **config_overrides)
     with st.spinner("Detecting scale bar and analyzing..."):
         nm_per_pixel, scale_bar, calib_note = _resolve_calibration(
             image_path,
@@ -728,6 +731,7 @@ if st.session_state.get("workspace_last") != workspace:
         st.session_state.filter_min_width_nm = 0.0
         st.session_state.filter_max_width_nm = 20.0
         st.session_state.show_rejected = True
+        st.session_state.fay_sensitivity = "High"
     st.session_state.workspace_last = workspace
 
 if workspace == "Trace & find similar":
@@ -745,10 +749,11 @@ fay_workspace = workspace == FAY_WORKSPACE
 if fay_workspace:
     st.info(
         "**Fay TEM analysis, Fall 26'.** Tuned for **small round dark nanoparticles** "
-        "on AMT frames (50 nm at 44000× or 100 nm at 22000×). Neighboring dots "
-        "are kept separate (not merged into one blob). The thick filename / Cal "
-        "text block is cropped so circular letters are not counted. Set the "
-        "printed scale-bar number to match the image, then review keep/discard."
+        "on AMT frames (50 nm at 44000× or 100 nm at 22000×). Detection follows "
+        "the gray intensity gradient out to each particle edge so **diameter** "
+        "is not just the black core. Neighboring dots stay separate. Set the "
+        "printed scale-bar number, then review keep/discard. "
+        f"Build **{_APP_BUILD}** — reboot Streamlit Cloud if you still see an older stamp."
     )
 
 st.subheader("1. Particle morphology")
@@ -766,6 +771,54 @@ mode_map = {
     "Both": AnalysisMode.BOTH,
 }
 analysis_mode = mode_map[mode_label]
+
+fay_config_overrides: dict = {}
+if fay_workspace:
+    st.subheader("Detection sensitivity")
+    fay_sensitivity = st.select_slider(
+        "How much of the gray particle edge to include",
+        options=["Low", "Medium", "High"],
+        value="High",
+        help=(
+            "High is more sensitive to faint gray rims (better diameter, more dots). "
+            "Low only keeps the darkest cores."
+        ),
+        key="fay_sensitivity",
+    )
+    if fay_sensitivity == "High":
+        fay_config_overrides = {
+            "min_darkness": 0.06,
+            "dark_sigma_k": 2.5,
+            "edge_grow_px": 2,
+            "edge_darkness": 0.03,
+            "min_local_contrast": 0.025,
+            "min_particle_area_px": 18,
+            "min_length_nm": 3.5,
+            "min_width_nm": 3.0,
+        }
+    elif fay_sensitivity == "Medium":
+        fay_config_overrides = {
+            "min_darkness": 0.07,
+            "dark_sigma_k": 2.6,
+            "edge_grow_px": 2,
+            "edge_darkness": 0.035,
+            "min_local_contrast": 0.03,
+            "min_particle_area_px": 20,
+            "min_length_nm": 4.0,
+            "min_width_nm": 3.0,
+        }
+    else:
+        fay_config_overrides = {
+            "min_darkness": 0.09,
+            "dark_sigma_k": 2.8,
+            "edge_grow_px": 1,
+            "edge_darkness": 0.04,
+            "min_local_contrast": 0.04,
+            "min_particle_area_px": 24,
+            "min_length_nm": 5.0,
+            "min_width_nm": 3.5,
+        }
+    st.caption("Reported size is **area-equivalent diameter** 2√(A/π).")
 
 st.subheader("2. Scale bar")
 st.caption(
@@ -872,6 +925,7 @@ if analyze_clicked:
                 show_rejected=show_rejected,
                 manual_scale_bar_px=manual_scale_bar_px,
                 embedded_nm_per_pixel=embedded,
+                config_overrides=fay_config_overrides or None,
             )
             st.rerun()
         except ValueError as exc:

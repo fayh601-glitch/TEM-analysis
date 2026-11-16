@@ -145,11 +145,11 @@ PRESETS["dense_rods"] = ImagePreset(
 )
 
 _FAY_TEM_FALL26_CONFIG = AnalysisConfig(
-    min_particle_area_px=10,
+    min_particle_area_px=18,
     min_eccentricity_rod=0.90,
     min_aspect_ratio_rod=1.80,
-    max_eccentricity_dot=0.88,
-    max_aspect_ratio_dot=1.65,
+    max_eccentricity_dot=0.97,
+    max_aspect_ratio_dot=2.2,
     split_touching_particles=True,
     split_min_area_px=24,
     split_min_width_px=4.0,
@@ -167,14 +167,18 @@ _FAY_TEM_FALL26_CONFIG = AnalysisConfig(
     threshold_mode=ThresholdMode.DARK,
     gaussian_sigma=0.6,
     background_sigma=40.0,
-    min_local_contrast=0.03,
-    min_darkness=0.07,
-    min_solidity=0.45,
-    min_extent=0.18,
-    min_length_nm=2.0,
-    max_length_nm=20.0,
-    min_width_nm=1.6,
-    max_width_nm=16.0,
+    min_local_contrast=0.025,
+    min_darkness=0.06,
+    dark_sigma_k=2.5,
+    edge_grow_px=2,
+    edge_darkness=0.03,
+    accept_ambiguous_as_dot=True,
+    min_solidity=0.40,
+    min_extent=0.15,
+    min_length_nm=3.5,
+    max_length_nm=22.0,
+    min_width_nm=3.0,
+    max_width_nm=18.0,
     crop_info_banner=True,
     info_banner_max_height_fraction=0.50,
     info_banner_pad_px=16,
@@ -186,8 +190,8 @@ PRESETS["fay_tem_fall26"] = ImagePreset(
     name="fay_tem_fall26",
     description=(
         "Fay TEM analysis, Fall 26': small round dark nanoparticles on AMT "
-        "frames with a thick filename/Cal text bar. Crops that bar, flattens "
-        "vignette, and keeps neighboring dots separate instead of merging them."
+        "frames. Includes the gray particle edge for diameter, keeps neighbors "
+        "separate, and crops the Cal/filename bar."
     ),
     default_scale_bar_nm=50.0,
     config=_FAY_TEM_FALL26_CONFIG,

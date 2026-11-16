@@ -110,13 +110,36 @@ def test_fay_tem_fall26_preset_crops_thick_banner():
     assert preset.config.threshold_mode == ThresholdMode.DARK
     assert preset.config.analysis_mode.value == "dots"
     assert preset.config.background_sigma >= 30.0
-    assert preset.config.min_particle_area_px <= 12
+    assert preset.config.min_particle_area_px <= 20
     assert preset.config.morphology_opening_radius == 0
     assert preset.config.morphology_closing_radius == 0
     assert preset.config.split_touching_particles is True
     assert preset.config.split_min_width_px <= 6.0
+    assert preset.config.edge_grow_px >= 2
+    assert preset.config.accept_ambiguous_as_dot is True
+    assert preset.config.dark_sigma_k <= 2.5
     assert preset.config.max_length_nm is not None
     assert preset.config.max_length_nm <= 22.0
+
+
+def test_expand_labels_includes_gray_halo():
+    """Diameter should include the gray rim, not only the black core."""
+    from skimage.draw import disk
+    from skimage.measure import label, regionprops
+
+    from tem_rods.segment import expand_labels_to_gray_edges
+
+    image = np.full((80, 80), 0.80, dtype=np.float64)
+    rr, cc = disk((40, 40), 10, shape=image.shape)
+    image[rr, cc] = 0.45  # gray halo
+    rr, cc = disk((40, 40), 6, shape=image.shape)
+    image[rr, cc] = 0.10  # dark core
+    core = image < 0.25
+    labels = label(core)
+    expanded = expand_labels_to_gray_edges(labels, image, max_px=4, edge_darkness=0.30)
+    core_eq = regionprops(labels)[0].equivalent_diameter
+    exp_eq = regionprops(expanded)[0].equivalent_diameter
+    assert exp_eq > core_eq + 2.0
 
 
 def test_grainy_film_without_rods_is_not_called_rods():
