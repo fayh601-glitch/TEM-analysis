@@ -98,6 +98,19 @@ def test_dense_rods_alias_shares_config():
     assert get_preset("dense_rods").config is get_preset("dense_rods_50nm").config
 
 
+def test_fay_tem_fall26_preset_crops_thick_banner():
+    from tem_rods.models import ThresholdMode
+    from tem_rods.presets import get_preset
+
+    preset = get_preset("fay_tem_fall26")
+    assert preset.config.crop_info_banner is True
+    assert preset.config.info_banner_max_height_fraction >= 0.45
+    assert preset.config.info_banner_pad_px >= 10
+    assert preset.config.mask_bottom_fraction >= 0.20
+    assert preset.config.threshold_mode == ThresholdMode.DARK
+    assert preset.config.analysis_mode.value == "rods"
+
+
 def test_grainy_film_without_rods_is_not_called_rods():
     """Film grain must not be labeled as rods, even when it looks speckled."""
     from tem_rods.measure import measure_particles

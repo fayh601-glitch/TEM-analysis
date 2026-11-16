@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-08-14-ellipse-length-1"
+_APP_BUILD = "2026-11-16-fay-fall26-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -122,9 +122,9 @@ st.markdown(
 
 st.title("Python Based Geometric Analysis for TEM Images")
 st.caption(
-    "Choose a workspace: auto-detect particles, or trace one outline to find similar shapes. "
+    "Choose a workspace: auto-detect particles, trace one outline, or "
+    "**Fay TEM analysis, Fall 26'** for AMT camera images with a thick text bar. "
     "Only **dark** nanoparticles are outlined — carbon-film grain is ignored. "
-    "Enter the scale bar (nm), approve outlines, download results. "
     f"Build {_APP_BUILD}."
 )
 
@@ -697,13 +697,29 @@ def _render_trace_and_match_tab() -> None:
 _init_session()
 
 SAMPLE_50NM = _REPO / "data" / "curated" / "user_rods_50nm_jul13.png"
+FAY_WORKSPACE = "Fay TEM analysis, Fall 26'"
+FAY_PRESET = "fay_tem_fall26"
 
 workspace = st.radio(
     "Workspace",
-    options=["Auto detect & review", "Trace & find similar"],
+    options=["Auto detect & review", "Trace & find similar", FAY_WORKSPACE],
     horizontal=True,
-    help="Auto detect runs the full pipeline. Trace lets you outline one particle and find look-alikes.",
+    help=(
+        "Auto detect runs the general pipeline. Trace lets you outline one particle. "
+        f"{FAY_WORKSPACE} is tuned for AMT TIFFs with a thick filename/Cal text bar."
+    ),
 )
+
+if st.session_state.get("workspace_last") != workspace:
+    if st.session_state.get("workspace_last"):
+        st.session_state.analysis_done = False
+        st.session_state.particles = None
+        st.session_state.image = None
+        st.session_state.labels = None
+        st.session_state.approved_ids = set()
+        st.session_state.add_message = None
+        st.session_state.overlay_bytes = None
+    st.session_state.workspace_last = workspace
 
 if workspace == "Trace & find similar":
     _render_trace_and_match_tab()
@@ -714,7 +730,17 @@ if workspace == "Trace & find similar":
     )
     st.stop()
 
+fay_workspace = workspace == FAY_WORKSPACE
+
 # --- Primary controls (always visible before analyze) ---
+if fay_workspace:
+    st.info(
+        "**Fay TEM analysis, Fall 26'.** This workspace crops the thick filename / "
+        "Cal / scale-bar text block at the bottom so circular letters (0, O, 8, C) "
+        "are not counted as dots. Set the printed scale-bar number, upload the TIFF, "
+        "then review keep/discard the same way as Auto detect."
+    )
+
 st.subheader("1. Particle morphology")
 mode_label = st.radio(
     "Particle type",
@@ -722,6 +748,7 @@ mode_label = st.radio(
     index=0,
     horizontal=True,
     help="Rods-only ignores round fragments. Dots-only ignores elongated shapes.",
+    key="morphology_mode",
 )
 mode_map = {
     "Rods": AnalysisMode.RODS,
@@ -746,13 +773,17 @@ scale_bar_nm = st.number_input(
 
 with st.expander("Advanced settings", expanded=False):
     preset_names = sorted(PRESETS.keys())
-    default_preset = _default_preset_for_mode(analysis_mode)
-    preset_name = st.selectbox(
-        "Image preset",
-        preset_names,
-        index=preset_names.index(default_preset) if default_preset in preset_names else 0,
-        help="Tuned thresholds for dense rods, paper screenshots, dots, etc.",
-    )
+    if fay_workspace and FAY_PRESET in PRESETS:
+        preset_name = FAY_PRESET
+        st.caption(f"Preset locked to **{FAY_PRESET}** (thick AMT footer + dark nanorods).")
+    else:
+        default_preset = _default_preset_for_mode(analysis_mode)
+        preset_name = st.selectbox(
+            "Image preset",
+            preset_names,
+            index=preset_names.index(default_preset) if default_preset in preset_names else 0,
+            help="Tuned thresholds for dense rods, paper screenshots, dots, etc.",
+        )
     show_rejected = st.checkbox("Show rejected particles (orange)", value=False)
     override_px = st.checkbox(
         "Manually override scale-bar pixels (only if auto-detect fails)",
@@ -776,7 +807,7 @@ if SAMPLE_50NM.exists() and not st.session_state.analysis_done:
             _run_analysis(
                 SAMPLE_50NM,
                 scale_bar_nm=scale_bar_nm,
-                preset_name="dense_rods_50nm" if "dense_rods_50nm" in PRESETS else preset_name,
+                preset_name=preset_name,
                 analysis_mode=analysis_mode,
                 show_rejected=show_rejected,
                 manual_scale_bar_px=manual_scale_bar_px,
@@ -792,6 +823,7 @@ uploaded = st.file_uploader(
         "Microscope TIFFs (AMT camera exports) and screenshots are both OK. "
         "The white info bar with filename and Cal: text is removed before particle finding."
     ),
+    key="fay_uploader" if fay_workspace else "auto_uploader",
 )
 
 if uploaded is not None and not st.session_state.analysis_done:

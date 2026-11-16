@@ -175,7 +175,11 @@ def analyze_image(
     if cfg.crop_margins:
         image = crop_white_margins(image)
     if cfg.crop_info_banner:
-        cropped, banner_row = crop_bottom_info_banner(image)
+        cropped, banner_row = crop_bottom_info_banner(
+            image,
+            max_height_fraction=getattr(cfg, "info_banner_max_height_fraction", 0.42),
+            pad_px=getattr(cfg, "info_banner_pad_px", 6),
+        )
         if banner_row is not None:
             removed = image.shape[0] - cropped.shape[0]
             image = cropped

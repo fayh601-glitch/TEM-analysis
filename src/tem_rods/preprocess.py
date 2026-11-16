@@ -73,15 +73,38 @@ def crop_white_margins(image: np.ndarray, *, threshold: float = 0.92) -> np.ndar
     return img[top:bottom, left:right]
 
 
+def _row_looks_like_info_bar(
+    row: np.ndarray,
+    *,
+    bright_threshold: float,
+    min_bright_fraction: float,
+    min_body_median: float,
+) -> bool:
+    """True for a white/gray instrument row even when black letters are present.
+
+    Circular glyphs (0, O, 8, C) are dark, so a raw row median can look like TEM
+    film. Use the brighter part of the row (the paper/background of the strip).
+    """
+    if row.size == 0:
+        return False
+    bright_frac = float((row >= bright_threshold).mean())
+    if bright_frac >= min_bright_fraction:
+        return True
+    cutoff = max(1, int(0.30 * row.size))
+    body_median = float(np.median(np.sort(row)[cutoff:]))
+    return body_median >= min_body_median
+
+
 def detect_bottom_info_banner(
     image: np.ndarray,
     *,
     bright_threshold: float = 0.82,
-    min_bright_fraction: float = 0.50,
+    min_bright_fraction: float = 0.45,
     min_height_fraction: float = 0.04,
-    max_height_fraction: float = 0.35,
+    max_height_fraction: float = 0.42,
     min_height_px: int = 10,
     min_banner_median: float = 0.80,
+    pad_px: int = 6,
 ) -> int | None:
     """
     Find a bright instrument info bar glued to the bottom of a TEM micrograph.
@@ -104,27 +127,30 @@ def detect_bottom_info_banner(
     if h < min_h + 8:
         return None
 
-    # Median stays high even when a row has black filename/Cal text.
-    row_median = np.median(img, axis=1)
-    bright_frac = (img >= bright_threshold).mean(axis=1)
     start = h
     row = h - 1
-    while row >= h - max_h and (
-        row_median[row] >= min_banner_median or bright_frac[row] >= min_bright_fraction
+    while row >= h - max_h and _row_looks_like_info_bar(
+        img[row],
+        bright_threshold=bright_threshold,
+        min_bright_fraction=min_bright_fraction,
+        min_body_median=min_banner_median,
     ):
         start = row
         row -= 1
 
+    start = max(0, start - max(0, int(pad_px)))
     banner_h = h - start
     if banner_h < min_h:
         return None
-    banner_med = float(np.median(img[start:]))
-    if banner_med < min_banner_median:
+
+    banner = img[start:]
+    cutoff = max(1, int(0.30 * banner.size))
+    banner_body = float(np.median(np.sort(banner.ravel())[cutoff:]))
+    if banner_body < min_banner_median - 0.04:
         return None
-    # Require a darker micrograph just above the strip (relative drop, not
-    # an absolute cutoff — light carbon films are often ~0.7–0.85).
+    # Require a darker micrograph just above the strip.
     above = img[max(0, start - 12) : start]
-    if above.size and banner_med - float(np.median(above)) < 0.06:
+    if above.size and banner_body - float(np.median(above)) < 0.06:
         return None
     return start
 

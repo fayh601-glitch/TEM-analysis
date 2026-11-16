@@ -82,6 +82,10 @@ class AnalysisConfig:
     local_threshold_offset: float = 0.01
     crop_margins: bool = False
     crop_info_banner: bool = True
+    # How tall a bottom instrument strip may be, as a fraction of image height.
+    info_banner_max_height_fraction: float = 0.35
+    # Extra rows cropped above the detected strip (letters often sit on the edge).
+    info_banner_pad_px: int = 4
     use_clahe: bool = False
     show_rejected_on_overlay: bool = True
     write_segmentation_debug: bool = False

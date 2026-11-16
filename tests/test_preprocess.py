@@ -67,3 +67,28 @@ def test_detect_bottom_info_banner_ignores_normal_tem():
     cropped, row = crop_bottom_info_banner(image)
     assert row is None
     assert cropped.shape == image.shape
+
+
+def test_detect_thick_text_banner_with_circular_letters():
+    """Dense black glyphs must not hide a thick white AMT footer."""
+    from skimage.draw import disk
+
+    rng = np.random.default_rng(4)
+    micro_h, banner_h, w = 240, 180, 400  # banner is 43% of height
+    micro = rng.uniform(0.50, 0.72, (micro_h, w))
+    banner = np.ones((banner_h, w), dtype=np.float64) * 0.97
+    # Circular letters (0 / O / 8) that would otherwise be called dots.
+    for cx in (40, 90, 140, 200, 260, 320):
+        rr, cc = disk((40, cx), 11, shape=banner.shape)
+        banner[rr, cc] = 0.02
+        rr, cc = disk((110, cx), 9, shape=banner.shape)
+        banner[rr, cc] = 0.05
+    image = np.vstack([micro, banner])
+
+    start = detect_bottom_info_banner(image, max_height_fraction=0.50, pad_px=8)
+    assert start is not None
+    assert start <= micro_h
+    cropped, row = crop_bottom_info_banner(image, max_height_fraction=0.50, pad_px=8)
+    assert row == start
+    assert cropped.shape[0] <= micro_h
+    assert cropped.shape[0] >= micro_h - 20

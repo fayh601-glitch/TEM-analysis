@@ -144,6 +144,45 @@ PRESETS["dense_rods"] = ImagePreset(
     config=_DENSE_RODS_50NM_CONFIG,
 )
 
+_FAY_TEM_FALL26_CONFIG = AnalysisConfig(
+    min_particle_area_px=200,
+    min_eccentricity_rod=0.86,
+    min_aspect_ratio_rod=1.60,
+    split_touching_particles=False,
+    split_min_area_px=800,
+    # If banner crop misses, still blank the bottom strip so letters are not dots.
+    mask_bottom_fraction=0.28,
+    use_scale_bar_bbox_mask=True,
+    expected_scale_bar_nm=50.0,
+    fill_holes=True,
+    morphology_closing_radius=1,
+    threshold_mode=ThresholdMode.DARK,
+    gaussian_sigma=2.0,
+    min_local_contrast=0.08,
+    min_darkness=0.12,
+    min_solidity=0.52,
+    min_extent=0.20,
+    min_length_nm=8.0,
+    max_length_nm=32.0,
+    min_width_nm=2.0,
+    max_width_nm=9.0,
+    crop_info_banner=True,
+    info_banner_max_height_fraction=0.50,
+    info_banner_pad_px=16,
+    analysis_mode=AnalysisMode.RODS,
+    show_rejected_on_overlay=False,
+)
+
+PRESETS["fay_tem_fall26"] = ImagePreset(
+    name="fay_tem_fall26",
+    description=(
+        "Fay TEM analysis, Fall 26': AMT camera TIFFs with a thick filename/"
+        "Cal text bar. Crops that bar so circular letters are not counted as dots."
+    ),
+    default_scale_bar_nm=50.0,
+    config=_FAY_TEM_FALL26_CONFIG,
+)
+
 
 def get_preset(name: str) -> ImagePreset:
     key = name.lower().replace("-", "_")
