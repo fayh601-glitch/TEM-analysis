@@ -108,7 +108,11 @@ def test_fay_tem_fall26_preset_crops_thick_banner():
     assert preset.config.info_banner_pad_px >= 10
     assert preset.config.mask_bottom_fraction >= 0.20
     assert preset.config.threshold_mode == ThresholdMode.DARK
-    assert preset.config.analysis_mode.value == "rods"
+    assert preset.config.analysis_mode.value == "dots"
+    assert preset.config.background_sigma >= 30.0
+    assert preset.config.min_particle_area_px <= 30
+    assert preset.config.max_length_nm is not None
+    assert preset.config.max_length_nm <= 20.0
 
 
 def test_grainy_film_without_rods_is_not_called_rods():

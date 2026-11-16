@@ -9,7 +9,13 @@ These tests ensure preprocessing trims margins without affecting normal TEM PNGs
 import numpy as np
 from skimage.filters import threshold_otsu
 
-from tem_rods.preprocess import crop_bottom_info_banner, crop_white_margins, detect_bottom_info_banner, preprocess
+from tem_rods.preprocess import (
+    crop_bottom_info_banner,
+    crop_white_margins,
+    detect_bottom_info_banner,
+    preprocess,
+    subtract_smooth_background,
+)
 
 
 def test_crop_white_margins_trims_borders():
@@ -40,6 +46,29 @@ def test_preprocess_does_not_stretch_film_grain():
     assert processed.min() >= 0.55
     assert processed.max() <= 0.85
     assert abs(float(np.median(processed)) - 0.70) < 0.05
+
+
+def test_subtract_smooth_background_flattens_vignette():
+    """Left-dark / right-bright TEM falloff should not remain after flattening."""
+    h, w = 120, 200
+    yy, xx = np.mgrid[0:h, 0:w]
+    vignette = 0.40 + 0.45 * (xx / (w - 1))
+    flattened = subtract_smooth_background(vignette, sigma=30.0)
+    left = float(np.median(flattened[:, :40]))
+    right = float(np.median(flattened[:, -40:]))
+    assert abs(left - right) < 0.05
+    assert flattened.min() >= 0.0
+    assert flattened.max() <= 1.0
+
+
+def test_preprocess_background_sigma_keeps_local_dark_dot():
+    image = np.full((160, 220), 0.55, dtype=np.float64)
+    image[:, 110:] = 0.85
+    image[70:90, 40:60] = 0.15
+    image[70:90, 160:180] = 0.45  # same local contrast on the bright side
+    processed = preprocess(image, gaussian_sigma=0.0, background_sigma=35.0)
+    assert float(processed[80, 50]) < float(np.median(processed)) - 0.15
+    assert float(processed[80, 170]) < float(np.median(processed)) - 0.15
 
 
 def test_detect_bottom_info_banner_finds_amt_strip():

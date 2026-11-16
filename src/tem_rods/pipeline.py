@@ -202,6 +202,7 @@ def analyze_image(
         gaussian_sigma=cfg.gaussian_sigma,
         crop_margins=False,
         use_clahe=cfg.use_clahe,
+        background_sigma=getattr(cfg, "background_sigma", 0.0),
     )
     exclude_bbox, mask_notes = _resolve_exclude_bbox(
         image_path,

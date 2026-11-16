@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-11-16-fay-fall26-1"
+_APP_BUILD = "2026-11-16-fay-dots-1"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -123,7 +123,8 @@ st.markdown(
 st.title("Python Based Geometric Analysis for TEM Images")
 st.caption(
     "Choose a workspace: auto-detect particles, trace one outline, or "
-    "**Fay TEM analysis, Fall 26'** for AMT camera images with a thick text bar. "
+    "**Fay TEM analysis, Fall 26'** for AMT camera frames of round nanoparticles "
+    "with a thick filename/Cal text bar. "
     "Only **dark** nanoparticles are outlined — carbon-film grain is ignored. "
     f"Build {_APP_BUILD}."
 )
@@ -706,7 +707,7 @@ workspace = st.radio(
     horizontal=True,
     help=(
         "Auto detect runs the general pipeline. Trace lets you outline one particle. "
-        f"{FAY_WORKSPACE} is tuned for AMT TIFFs with a thick filename/Cal text bar."
+        f"{FAY_WORKSPACE} is tuned for round AMT nanoparticles with a thick filename/Cal text bar."
     ),
 )
 
@@ -719,6 +720,8 @@ if st.session_state.get("workspace_last") != workspace:
         st.session_state.approved_ids = set()
         st.session_state.add_message = None
         st.session_state.overlay_bytes = None
+    if workspace == FAY_WORKSPACE:
+        st.session_state.morphology_mode = "Dots"
     st.session_state.workspace_last = workspace
 
 if workspace == "Trace & find similar":
@@ -735,17 +738,18 @@ fay_workspace = workspace == FAY_WORKSPACE
 # --- Primary controls (always visible before analyze) ---
 if fay_workspace:
     st.info(
-        "**Fay TEM analysis, Fall 26'.** This workspace crops the thick filename / "
-        "Cal / scale-bar text block at the bottom so circular letters (0, O, 8, C) "
-        "are not counted as dots. Set the printed scale-bar number, upload the TIFF, "
-        "then review keep/discard the same way as Auto detect."
+        "**Fay TEM analysis, Fall 26'.** Tuned for **round dark nanoparticles** on "
+        "AMT camera frames (50 nm at 44000× or 100 nm at 22000×). The thick "
+        "filename / Cal / scale-bar text block is cropped so circular letters "
+        "(0, O, 8, C) are not counted as dots. Set the printed scale-bar number "
+        "to match the image, then review keep/discard the same way as Auto detect."
     )
 
 st.subheader("1. Particle morphology")
 mode_label = st.radio(
     "Particle type",
     options=["Rods", "Dots", "Both"],
-    index=0,
+    index=1 if fay_workspace else 0,
     horizontal=True,
     help="Rods-only ignores round fragments. Dots-only ignores elongated shapes.",
     key="morphology_mode",
@@ -759,7 +763,8 @@ analysis_mode = mode_map[mode_label]
 
 st.subheader("2. Scale bar")
 st.caption(
-    "Enter only the printed number (e.g. **50** if the image says “50 nm”). "
+    "Enter only the printed number (e.g. **50** if the image says “50 nm”, "
+    "or **100** for 22000× frames). "
     "The app finds that line even when it sits in the white camera info bar "
     "at the bottom, then crops the bar so the text is not counted as particles."
 )
@@ -775,7 +780,7 @@ with st.expander("Advanced settings", expanded=False):
     preset_names = sorted(PRESETS.keys())
     if fay_workspace and FAY_PRESET in PRESETS:
         preset_name = FAY_PRESET
-        st.caption(f"Preset locked to **{FAY_PRESET}** (thick AMT footer + dark nanorods).")
+        st.caption(f"Preset locked to **{FAY_PRESET}** (thick AMT footer + round dark dots).")
     else:
         default_preset = _default_preset_for_mode(analysis_mode)
         preset_name = st.selectbox(
@@ -800,7 +805,7 @@ with st.expander("Advanced settings", expanded=False):
     st.caption("Green = keep · red = discard · click a numbered marker to toggle.")
 
 st.subheader("3. Image")
-if SAMPLE_50NM.exists() and not st.session_state.analysis_done:
+if SAMPLE_50NM.exists() and not st.session_state.analysis_done and not fay_workspace:
     st.info("Demo image available: dense nanorods with a 50 nm scale bar.")
     if st.button("Analyze demo (50 nm rods)", type="secondary"):
         try:

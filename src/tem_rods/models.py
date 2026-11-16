@@ -87,6 +87,9 @@ class AnalysisConfig:
     # Extra rows cropped above the detected strip (letters often sit on the edge).
     info_banner_pad_px: int = 4
     use_clahe: bool = False
+    # Subtract a large Gaussian to flatten TEM vignette (0 = off). ~40 px on
+    # 1k-wide AMT frames; round dots on the bright side are otherwise missed.
+    background_sigma: float = 0.0
     show_rejected_on_overlay: bool = True
     write_segmentation_debug: bool = False
     promote_borderline_rejects: bool = False

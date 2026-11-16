@@ -13,12 +13,28 @@ import numpy as np
 from skimage import exposure, filters
 
 
+def subtract_smooth_background(image: np.ndarray, *, sigma: float) -> np.ndarray:
+    """
+    Remove slow illumination falloff (TEM vignette) without stretching grain.
+
+    AMT frames are often darker on one side. Global dark-thresholding then
+    misses real particles on the bright side. Subtracting a large Gaussian
+    leaves local dark dots intact.
+    """
+    if sigma is None or sigma <= 0:
+        return image
+    img = np.asarray(image, dtype=np.float64)
+    background = filters.gaussian(img, sigma=float(sigma), preserve_range=True)
+    return np.clip(img - background + float(np.median(img)), 0.0, 1.0)
+
+
 def preprocess(
     image: np.ndarray,
     *,
     gaussian_sigma: float = 1.0,
     crop_margins: bool = False,
     use_clahe: bool = False,
+    background_sigma: float = 0.0,
 ) -> np.ndarray:
     """
     Enhance contrast for TEM images where particles are darker than background.
@@ -38,6 +54,8 @@ def preprocess(
     # Do not min–max stretch. Stretching a grainy carbon film maps specks to 0 and 1,
     # so later thresholding treats background texture as particles.
     img = np.clip(img, 0.0, 1.0)
+    if background_sigma and background_sigma > 0:
+        img = subtract_smooth_background(img, sigma=background_sigma)
     if use_clahe:
         img = exposure.equalize_adapthist(img, clip_limit=0.02)
     if gaussian_sigma > 0:

@@ -322,19 +322,21 @@ def test_analyze_image_crops_amt_info_banner(tmp_path):
 def test_fay_preset_does_not_count_footer_letters_as_dots(tmp_path):
     """Circular glyphs in a thick AMT text bar must not become dots."""
     from PIL import Image, ImageDraw
+    from skimage.draw import disk
     from tem_rods.presets import get_preset
 
     micro_h, banner_h, w = 260, 200, 420
     rng = np.random.default_rng(6)
     image = rng.uniform(0.55, 0.75, (micro_h + banner_h, w))
-    rr, cc = ellipse(90, 150, 8, 28, rotation=np.deg2rad(20))
-    image[rr, cc] = 0.10
+    for cy, cx in ((80, 90), (150, 200), (90, 310)):
+        rr, cc = disk((cy, cx), 10, shape=image.shape)
+        image[rr, cc] = 0.10
     image[micro_h:] = 0.97
 
     u8 = (np.clip(image, 0, 1) * 255).astype(np.uint8)
     pil = Image.fromarray(u8, mode="L")
     draw = ImageDraw.Draw(pil)
-    draw.text((20, micro_h + 20), "CT01_CdSeRods_45minrxn_003.tif", fill=0)
+    draw.text((20, micro_h + 20), "20260916_FAY_03-02_005.tif", fill=0)
     draw.text((20, micro_h + 70), "Cal: 0.000231 um/pix   50 nm", fill=0)
     draw.text((20, micro_h + 120), "O 0 8 C 200 nm  HV=80kV", fill=0)
     for x in (40, 100, 160, 230, 300):
@@ -352,6 +354,60 @@ def test_fay_preset_does_not_count_footer_letters_as_dots(tmp_path):
     assert result.image is not None
     assert result.image.shape[0] <= micro_h + 2
     dots = [p for p in result.particles if p.particle_class == ParticleClass.DOT]
-    assert dots == []
+    assert len(dots) >= 2
     for particle in result.particles:
         assert particle.centroid_y < micro_h
+
+
+def test_fay_preset_finds_dots_on_both_sides_of_vignette(tmp_path):
+    """AMT frames are darker on one side; flattening should keep both fields."""
+    from tem_rods.presets import get_preset
+
+    h, w = 280, 360
+    yy, xx = np.mgrid[0:h, 0:w]
+    image = 0.42 + 0.40 * (xx / (w - 1))
+    rng = np.random.default_rng(8)
+    image = np.clip(image + rng.normal(0, 0.012, image.shape), 0.0, 1.0)
+    left = [(70, 50), (160, 70), (220, 45)]
+    right = [(80, 300), (170, 310), (230, 290)]
+    for cy, cx in left + right:
+        rr, cc = disk((cy, cx), 8, shape=image.shape)
+        image[rr, cc] = np.clip(image[rr, cc] - 0.32, 0.02, 1.0)
+    path = tmp_path / "vignette_dots.png"
+    from PIL import Image as PILImage
+
+    PILImage.fromarray((np.clip(image, 0, 1) * 255).astype(np.uint8), mode="L").save(path)
+
+    result = analyze_image(
+        path,
+        0.50,
+        output_dir=tmp_path / "out",
+        config=get_preset("fay_tem_fall26").config,
+        save_outputs=False,
+    )
+    dots = [p for p in result.particles if p.particle_class == ParticleClass.DOT]
+    assert len(dots) >= 4
+    xs = [p.centroid_x for p in dots]
+    assert min(xs) < w * 0.35
+    assert max(xs) > w * 0.65
+
+
+def test_fay_preset_does_not_count_empty_grain_as_dots(tmp_path):
+    """Carbon-film grain without nanoparticles must not become a dot field."""
+    from tem_rods.presets import get_preset
+
+    rng = np.random.default_rng(11)
+    image = np.clip(rng.normal(0.68, 0.03, (320, 400)), 0.55, 0.85)
+    path = tmp_path / "grain_only.png"
+    from PIL import Image as PILImage
+
+    PILImage.fromarray((image * 255).astype(np.uint8), mode="L").save(path)
+    result = analyze_image(
+        path,
+        0.50,
+        output_dir=tmp_path / "out",
+        config=get_preset("fay_tem_fall26").config,
+        save_outputs=False,
+    )
+    dots = [p for p in result.particles if p.particle_class == ParticleClass.DOT]
+    assert len(dots) < 5
