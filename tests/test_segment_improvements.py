@@ -110,9 +110,13 @@ def test_fay_tem_fall26_preset_crops_thick_banner():
     assert preset.config.threshold_mode == ThresholdMode.DARK
     assert preset.config.analysis_mode.value == "dots"
     assert preset.config.background_sigma >= 30.0
-    assert preset.config.min_particle_area_px <= 30
+    assert preset.config.min_particle_area_px <= 12
+    assert preset.config.morphology_opening_radius == 0
+    assert preset.config.morphology_closing_radius == 0
+    assert preset.config.split_touching_particles is True
+    assert preset.config.split_min_width_px <= 6.0
     assert preset.config.max_length_nm is not None
-    assert preset.config.max_length_nm <= 20.0
+    assert preset.config.max_length_nm <= 22.0
 
 
 def test_grainy_film_without_rods_is_not_called_rods():

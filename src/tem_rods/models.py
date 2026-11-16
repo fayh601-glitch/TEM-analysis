@@ -67,6 +67,8 @@ class AnalysisConfig:
     use_scale_bar_bbox_mask: bool = True
     expected_scale_bar_nm: float | None = None
     morphology_closing_radius: int = 2
+    # 1 is the historical default (cleans rod masks). 0 keeps tiny separate dots.
+    morphology_opening_radius: int = 1
     fill_holes: bool = True
     watershed_min_distance: int = 10
     use_watershed: bool = False
@@ -75,6 +77,8 @@ class AnalysisConfig:
     split_max_aspect_ratio: float = 4.5
     split_min_width_px: float = 22.0
     split_watershed_min_distance: int = 5
+    # None → max(min_particle_area_px, 60), which is correct for nanorods.
+    split_min_piece_area_px: int | None = None
     exclude_border: bool = True
     threshold_mode: ThresholdMode = ThresholdMode.AUTO
     percentile_threshold: float = 40.0

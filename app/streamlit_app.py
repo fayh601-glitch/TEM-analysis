@@ -32,7 +32,7 @@ if str(_REPO / "app") not in sys.path:
     sys.path.insert(0, str(_REPO / "app"))
 
 # Bump when Cloud keeps stale code after a deploy.
-_APP_BUILD = "2026-11-16-fay-dots-1"
+_APP_BUILD = "2026-11-16-fay-dots-2"
 
 # Prefer this repo's src/ over a stale Cloud site-packages copy of tem_rods.
 _SRC = str(_REPO / "src")
@@ -722,6 +722,12 @@ if st.session_state.get("workspace_last") != workspace:
         st.session_state.overlay_bytes = None
     if workspace == FAY_WORKSPACE:
         st.session_state.morphology_mode = "Dots"
+        # Rod-session leftovers (e.g. min length 8 nm) would hide these ~5 nm dots.
+        st.session_state.filter_min_length_nm = 0.0
+        st.session_state.filter_max_length_nm = 30.0
+        st.session_state.filter_min_width_nm = 0.0
+        st.session_state.filter_max_width_nm = 20.0
+        st.session_state.show_rejected = True
     st.session_state.workspace_last = workspace
 
 if workspace == "Trace & find similar":
@@ -738,11 +744,11 @@ fay_workspace = workspace == FAY_WORKSPACE
 # --- Primary controls (always visible before analyze) ---
 if fay_workspace:
     st.info(
-        "**Fay TEM analysis, Fall 26'.** Tuned for **round dark nanoparticles** on "
-        "AMT camera frames (50 nm at 44000× or 100 nm at 22000×). The thick "
-        "filename / Cal / scale-bar text block is cropped so circular letters "
-        "(0, O, 8, C) are not counted as dots. Set the printed scale-bar number "
-        "to match the image, then review keep/discard the same way as Auto detect."
+        "**Fay TEM analysis, Fall 26'.** Tuned for **small round dark nanoparticles** "
+        "on AMT frames (50 nm at 44000× or 100 nm at 22000×). Neighboring dots "
+        "are kept separate (not merged into one blob). The thick filename / Cal "
+        "text block is cropped so circular letters are not counted. Set the "
+        "printed scale-bar number to match the image, then review keep/discard."
     )
 
 st.subheader("1. Particle morphology")
@@ -789,7 +795,11 @@ with st.expander("Advanced settings", expanded=False):
             index=preset_names.index(default_preset) if default_preset in preset_names else 0,
             help="Tuned thresholds for dense rods, paper screenshots, dots, etc.",
         )
-    show_rejected = st.checkbox("Show rejected particles (orange)", value=False)
+    show_rejected = st.checkbox(
+        "Show rejected particles (orange)",
+        value=True if fay_workspace else False,
+        key="show_rejected",
+    )
     override_px = st.checkbox(
         "Manually override scale-bar pixels (only if auto-detect fails)",
         value=False,
@@ -915,6 +925,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             value=float(st.session_state.get("filter_min_length_nm", 0.0)),
             step=1.0,
             help="Discard particles shorter than this.",
+            key="filter_min_length_nm",
         )
     with lf2:
         max_len = st.number_input(
@@ -923,6 +934,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             value=float(st.session_state.get("filter_max_length_nm", 200.0)),
             step=1.0,
             help="Discard particles longer than this.",
+            key="filter_max_length_nm",
         )
     with lf3:
         min_wid = st.number_input(
@@ -931,6 +943,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             value=float(st.session_state.get("filter_min_width_nm", 0.0)),
             step=0.5,
             help="Discard particles thinner than this.",
+            key="filter_min_width_nm",
         )
     with lf4:
         max_wid = st.number_input(
@@ -939,6 +952,7 @@ if st.session_state.analysis_done and st.session_state.particles:
             value=float(st.session_state.get("filter_max_width_nm", 50.0)),
             step=0.5,
             help="Discard particles thicker than this.",
+            key="filter_max_width_nm",
         )
     apply_size = st.button("Apply length and width filter", type="primary")
     if apply_size:
@@ -947,10 +961,7 @@ if st.session_state.analysis_done and st.session_state.particles:
         elif max_wid < min_wid:
             st.error("Max width must be ≥ min width.")
         else:
-            st.session_state.filter_min_length_nm = min_len
-            st.session_state.filter_max_length_nm = max_len
-            st.session_state.filter_min_width_nm = min_wid
-            st.session_state.filter_max_width_nm = max_wid
+            # Widget keys already hold these values; do not write them again after instantiate.
             # Start from all rods/dots, then apply ranges (so re-applying is predictable).
             base = default_approved_ids(particles)
             filtered, n_out = filter_approved_by_size(

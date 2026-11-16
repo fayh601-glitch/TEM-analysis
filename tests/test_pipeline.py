@@ -411,3 +411,38 @@ def test_fay_preset_does_not_count_empty_grain_as_dots(tmp_path):
     )
     dots = [p for p in result.particles if p.particle_class == ParticleClass.DOT]
     assert len(dots) < 5
+
+
+def test_fay_preset_does_not_merge_nearby_small_dots(tmp_path):
+    """Opening/closing used to glue neighboring quantum dots into one blob."""
+    from tem_rods.presets import get_preset
+
+    image = np.full((220, 260), 0.72, dtype=np.float64)
+    rng = np.random.default_rng(3)
+    image += rng.normal(0, 0.01, image.shape)
+    pairs = [((70, 70), (70, 86)), ((140, 80), (140, 96)), ((90, 180), (106, 180))]
+    for (y1, x1), (y2, x2) in pairs:
+        rr, cc = disk((y1, x1), 6, shape=image.shape)
+        image[rr, cc] = 0.12
+        rr, cc = disk((y2, x2), 6, shape=image.shape)
+        image[rr, cc] = 0.12
+    image = np.clip(image, 0, 1)
+    path = tmp_path / "nearby_dots.png"
+    from PIL import Image as PILImage
+
+    PILImage.fromarray((image * 255).astype(np.uint8), mode="L").save(path)
+    result = analyze_image(
+        path,
+        0.50,
+        output_dir=tmp_path / "out",
+        config=get_preset("fay_tem_fall26").config,
+        save_outputs=False,
+    )
+    dots = [p for p in result.particles if p.particle_class == ParticleClass.DOT]
+    assert len(dots) >= 5
+    for (y1, x1), (y2, x2) in pairs:
+        near_first = [p for p in dots if abs(p.centroid_y - y1) < 8 and abs(p.centroid_x - x1) < 8]
+        near_second = [p for p in dots if abs(p.centroid_y - y2) < 8 and abs(p.centroid_x - x2) < 8]
+        assert near_first, f"missing dot at {(y1, x1)}"
+        assert near_second, f"missing dot at {(y2, x2)}"
+        assert near_first[0].particle_id != near_second[0].particle_id

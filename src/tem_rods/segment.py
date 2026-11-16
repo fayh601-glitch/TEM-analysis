@@ -33,12 +33,14 @@ def segment_particles(
     min_local_contrast: float = 0.04,
     mask_bottom_fraction: float = 0.12,
     morphology_closing_radius: int = 1,
+    morphology_opening_radius: int = 1,
     fill_holes: bool = True,
     split_touching_particles: bool = True,
     split_min_area_px: int = 500,
     split_max_aspect_ratio: float = 4.5,
     split_min_width_px: float = 22.0,
     split_watershed_min_distance: int = 5,
+    split_min_piece_area_px: int | None = None,
     threshold_mode: ThresholdMode = ThresholdMode.AUTO,
     percentile_threshold: float = 40.0,
     local_threshold_block_size: int = 35,
@@ -61,7 +63,10 @@ def segment_particles(
     )
     # Remove tiny specks — real nanorods are larger than a few pixels across.
     binary = morphology.remove_small_objects(binary, min_size=min_particle_area_px)
-    binary = morphology.binary_opening(binary, morphology.disk(1))
+    if morphology_opening_radius > 0:
+        binary = morphology.binary_opening(
+            binary, morphology.disk(int(morphology_opening_radius))
+        )
     if morphology_closing_radius > 0:
         binary = morphology.binary_closing(binary, morphology.disk(morphology_closing_radius))
 
@@ -86,13 +91,18 @@ def segment_particles(
 
     if split_touching_particles:
         # Large merged blobs in dense clusters may contain several touching rods.
+        piece_area = (
+            int(split_min_piece_area_px)
+            if split_min_piece_area_px is not None
+            else max(min_particle_area_px, 60)
+        )
         labels = _split_touching_regions(
             labels,
             split_min_area_px=split_min_area_px,
             split_max_aspect_ratio=split_max_aspect_ratio,
             split_min_width_px=split_min_width_px,
             split_watershed_min_distance=split_watershed_min_distance,
-            min_piece_area_px=max(min_particle_area_px, 60),
+            min_piece_area_px=piece_area,
         )
 
     return _filter_regions(
@@ -127,12 +137,14 @@ def segment_particles_from_config(
         min_local_contrast=config.min_local_contrast,
         mask_bottom_fraction=config.mask_bottom_fraction,
         morphology_closing_radius=config.morphology_closing_radius,
+        morphology_opening_radius=getattr(config, "morphology_opening_radius", 1),
         fill_holes=config.fill_holes,
         split_touching_particles=config.split_touching_particles,
         split_min_area_px=config.split_min_area_px,
         split_max_aspect_ratio=config.split_max_aspect_ratio,
         split_min_width_px=config.split_min_width_px,
         split_watershed_min_distance=config.split_watershed_min_distance,
+        split_min_piece_area_px=getattr(config, "split_min_piece_area_px", None),
         threshold_mode=config.threshold_mode,
         percentile_threshold=config.percentile_threshold,
         local_threshold_block_size=config.local_threshold_block_size,

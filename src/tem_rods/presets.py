@@ -145,44 +145,49 @@ PRESETS["dense_rods"] = ImagePreset(
 )
 
 _FAY_TEM_FALL26_CONFIG = AnalysisConfig(
-    min_particle_area_px=18,
+    min_particle_area_px=10,
     min_eccentricity_rod=0.90,
     min_aspect_ratio_rod=1.80,
-    max_eccentricity_dot=0.82,
-    max_aspect_ratio_dot=1.50,
-    split_touching_particles=False,
-    split_min_area_px=800,
+    max_eccentricity_dot=0.88,
+    max_aspect_ratio_dot=1.65,
+    split_touching_particles=True,
+    split_min_area_px=24,
+    split_min_width_px=4.0,
+    split_watershed_min_distance=3,
+    split_min_piece_area_px=8,
+    split_max_aspect_ratio=4.0,
     # If banner crop misses, still blank the bottom strip so letters are not dots.
     mask_bottom_fraction=0.28,
     use_scale_bar_bbox_mask=True,
     expected_scale_bar_nm=50.0,
     fill_holes=True,
-    morphology_closing_radius=1,
+    # Opening/closing merge neighboring quantum dots into one blob.
+    morphology_opening_radius=0,
+    morphology_closing_radius=0,
     threshold_mode=ThresholdMode.DARK,
-    gaussian_sigma=1.0,
+    gaussian_sigma=0.6,
     background_sigma=40.0,
-    min_local_contrast=0.04,
-    min_darkness=0.08,
-    min_solidity=0.50,
-    min_extent=0.20,
-    min_length_nm=2.5,
-    max_length_nm=18.0,
-    min_width_nm=2.0,
+    min_local_contrast=0.03,
+    min_darkness=0.07,
+    min_solidity=0.45,
+    min_extent=0.18,
+    min_length_nm=2.0,
+    max_length_nm=20.0,
+    min_width_nm=1.6,
     max_width_nm=16.0,
     crop_info_banner=True,
     info_banner_max_height_fraction=0.50,
     info_banner_pad_px=16,
     analysis_mode=AnalysisMode.DOTS,
-    show_rejected_on_overlay=False,
+    show_rejected_on_overlay=True,
 )
 
 PRESETS["fay_tem_fall26"] = ImagePreset(
     name="fay_tem_fall26",
     description=(
-        "Fay TEM analysis, Fall 26': round dark nanoparticles on AMT frames "
-        "with a thick filename/Cal text bar. Crops that bar so circular letters "
-        "are not counted as dots, and flattens vignette so particles on the "
-        "bright side are still found."
+        "Fay TEM analysis, Fall 26': small round dark nanoparticles on AMT "
+        "frames with a thick filename/Cal text bar. Crops that bar, flattens "
+        "vignette, and keeps neighboring dots separate instead of merging them."
     ),
     default_scale_bar_nm=50.0,
     config=_FAY_TEM_FALL26_CONFIG,
